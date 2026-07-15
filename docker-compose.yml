@@ -1,0 +1,31 @@
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./files:/app/files
+      - csharp-exec-workspace:/exec-workspace
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - FILES_DIR=/app/files
+      - EXEC_WORKSPACE=/exec-workspace
+      - SANDBOX_IMAGE=csharp-sandbox
+    depends_on:
+      sandbox:
+        condition: service_started
+
+  sandbox:
+    build: ./sandbox
+    image: csharp-sandbox
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
+volumes:
+  csharp-exec-workspace:
+    name: csharp-exec-workspace
