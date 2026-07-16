@@ -17,11 +17,13 @@ import {
   Kbd,
 } from "@chakra-ui/react";
 import * as api from "./api";
-import type { TestCase, ExecutionResult, LintError } from "./api";
+import type { TestCase, ExecutionResult, LintError, SolutionFolder } from "./api";
 
 export default function App() {
-  const [files, setFiles] = useState<{ name: string; updatedAt: string }[]>([]);
+  const [solutions, setSolutions] = useState<SolutionFolder[]>([]);
+  const [currentSolution, setCurrentSolution] = useState<string | null>(null);
   const [currentFile, setCurrentFile] = useState<string | null>(null);
+  const [queuedFile, setQueuedFile] = useState<string | null>(null);
   const [code, setCode] = useState<string>("");
   const [testCases, setTestCases] = useState<TestCase[]>([]);
   const [output, setOutput] = useState<ExecutionResult | null>(null);
@@ -30,32 +32,55 @@ export default function App() {
   const [lintErrors, setLintErrors] = useState<LintError[]>([]);
   const [showTestCases, setShowTestCases] = useState(false);
   const [showSidebar, setShowSidebar] = useState(true);
-  const [stdin, setStdin] = useState("");
+  const [stdinMap, setStdinMap] = useState<Record<string, string>>({});
+  const [newSolutionModalOpen, setNewSolutionModalOpen] = useState(false);
   const [newFileModalOpen, setNewFileModalOpen] = useState(false);
+  const [newFileTargetSolution, setNewFileTargetSolution] = useState<string | null>(null);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const lintTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
-  const refreshFiles = useCallback(async () => {
-    const list = await api.listFiles();
-    setFiles(list);
+  const currentFileKey = currentSolution && currentFile ? `${currentSolution}/${currentFile}` : null;
+  const currentStdin = currentFileKey ? (stdinMap[currentFileKey] || "") : "";
+
+  const handleStdinChange = useCallback((value: string) => {
+    if (currentFileKey) {
+      setStdinMap((prev) => ({ ...prev, [currentFileKey]: value }));
+    }
+  }, [currentFileKey]);
+
+  const refreshSolutions = useCallback(async () => {
+    const list = await api.listSolutions();
+    setSolutions(list);
   }, []);
 
   useEffect(() => {
-    refreshFiles();
-  }, [refreshFiles]);
+    refreshSolutions();
+  }, [refreshSolutions]);
 
-  const openFile = useCallback(async (name: string) => {
-    const entry = await api.getFile(name);
-    setCurrentFile(name);
+  const openFile = useCallback(async (solution: string, file: string) => {
+    const entry = await api.getFile(solution, file);
+    setCurrentSolution(solution);
+    setCurrentFile(file);
+    setQueuedFile(`${solution}/${file}`);
     setCode(entry.code);
     setTestCases(entry.testCases || []);
     setOutput(null);
     setLintErrors([]);
   }, []);
 
+  const createNewSolution = useCallback(async (name: string) => {
+    if (!name?.trim()) return;
+    await api.createSolution(name);
+    await refreshSolutions();
+    setNewSolutionModalOpen(false);
+  }, [refreshSolutions]);
+
   const createNewFile = useCallback(async (name: string) => {
     if (!name?.trim()) return;
+    const targetSolution = newFileTargetSolution || currentSolution;
+    if (!targetSolution) return;
+
     const cleanName = name.trim().replace(/[^a-zA-Z0-9_]/g, "");
     if (!cleanName) return;
 
@@ -67,33 +92,35 @@ public class Solution
 {
     public static object Solve(string input)
     {
-        // TODO: Implement your solution
-        // Parse input from the string parameter
-        // Return the result (will be converted to string)
+        // input: test case input (from Test Cases panel) or null
+        // Stdin: read with Console.ReadLine() from Stdin tab
+
+        // Example: read from stdin
+        // var line = Console.ReadLine();
+
         return "";
     }
-
-    // Add helper methods here
 }
 `;
 
-    await api.saveFile(cleanName, template, []);
-    await refreshFiles();
-    await openFile(cleanName);
+    await api.saveFile(targetSolution, cleanName, template, []);
+    await refreshSolutions();
+    await openFile(targetSolution, cleanName);
     setNewFileModalOpen(false);
-  }, [refreshFiles, openFile]);
+    setNewFileTargetSolution(null);
+  }, [currentSolution, newFileTargetSolution, refreshSolutions, openFile]);
 
   const handleCodeChange = useCallback(
     (newCode: string) => {
       setCode(newCode);
 
-      if (currentFile) {
+      if (currentSolution && currentFile) {
         clearTimeout(saveTimer.current);
         setIsSaving(true);
         saveTimer.current = setTimeout(async () => {
-          await api.saveFile(currentFile, newCode, testCases);
+          await api.saveFile(currentSolution, currentFile, newCode, testCases);
           setIsSaving(false);
-          refreshFiles();
+          refreshSolutions();
         }, 1500);
       }
 
@@ -111,31 +138,36 @@ public class Solution
         }
       }, 2000);
     },
-    [currentFile, testCases, refreshFiles]
+    [currentSolution, currentFile, testCases, refreshSolutions]
   );
 
   const handleTestCasesChange = useCallback(
     async (newTestCases: TestCase[]) => {
       setTestCases(newTestCases);
-      if (currentFile) {
-        await api.saveFile(currentFile, code, newTestCases);
+      if (currentSolution && currentFile) {
+        await api.saveFile(currentSolution, currentFile, code, newTestCases);
       }
     },
-    [currentFile, code]
+    [currentSolution, currentFile, code]
   );
 
   const handleRun = useCallback(async () => {
-    if (!currentFile) return;
+    if (!queuedFile) return;
+
+    const [solution, file] = queuedFile.split("/");
+    const entry = await api.getFile(solution, file);
+    const fileStdin = stdinMap[queuedFile] || "";
+
     setIsRunning(true);
     setOutput(null);
 
     try {
-      await api.saveFile(currentFile, code, testCases);
+      await api.saveFile(solution, file, entry.code, entry.testCases);
 
       const result = await api.executeCode(
-        code,
-        testCases.length > 0 ? testCases : undefined,
-        stdin || undefined
+        entry.code,
+        entry.testCases.length > 0 ? entry.testCases : undefined,
+        fileStdin || undefined
       );
       setOutput(result);
     } catch (e: any) {
@@ -149,30 +181,57 @@ public class Solution
     } finally {
       setIsRunning(false);
     }
-  }, [currentFile, code, testCases, stdin]);
+  }, [queuedFile, stdinMap]);
 
   const handleSave = useCallback(async () => {
-    if (currentFile) {
-      await api.saveFile(currentFile, code, testCases);
+    if (currentSolution && currentFile) {
+      await api.saveFile(currentSolution, currentFile, code, testCases);
       setIsSaving(true);
-      refreshFiles();
+      refreshSolutions();
       setTimeout(() => setIsSaving(false), 500);
     }
-  }, [currentFile, code, testCases, refreshFiles]);
+  }, [currentSolution, currentFile, code, testCases, refreshSolutions]);
 
-  const handleDelete = useCallback(
+  const handleDeleteSolution = useCallback(
     async (name: string) => {
-      await api.deleteFile(name);
-      if (currentFile === name) {
+      await api.deleteSolution(name);
+      if (currentSolution === name) {
+        setCurrentSolution(null);
+        setCurrentFile(null);
+        setCode("");
+        setTestCases([]);
+        setOutput(null);
+        setQueuedFile(null);
+      }
+      if (queuedFile && queuedFile.startsWith(`${name}/`)) {
+        setQueuedFile(null);
+      }
+      await refreshSolutions();
+    },
+    [currentSolution, queuedFile, refreshSolutions]
+  );
+
+  const handleDeleteFile = useCallback(
+    async (solution: string, file: string) => {
+      await api.deleteFile(solution, file);
+      if (currentSolution === solution && currentFile === file) {
         setCurrentFile(null);
         setCode("");
         setTestCases([]);
         setOutput(null);
       }
-      await refreshFiles();
+      if (queuedFile === `${solution}/${file}`) {
+        setQueuedFile(null);
+      }
+      await refreshSolutions();
     },
-    [currentFile, refreshFiles]
+    [currentSolution, currentFile, queuedFile, refreshSolutions]
   );
+
+  const handleOpenNewFileModal = useCallback((solution?: string) => {
+    setNewFileTargetSolution(solution || null);
+    setNewFileModalOpen(true);
+  }, []);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -192,7 +251,7 @@ public class Solution
       }
       if (mod && e.key === "n") {
         e.preventDefault();
-        setNewFileModalOpen(true);
+        setNewSolutionModalOpen(true);
       }
       if (mod && e.key === "b") {
         e.preventDefault();
@@ -210,16 +269,19 @@ public class Solution
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [handleRun, handleSave, currentFile, code, testCases, commandPaletteOpen]);
+  }, [handleRun, handleSave, commandPaletteOpen]);
 
   return (
     <Box h="100vh" display="flex" flexDirection="column" bg="bg.app">
       <Header
+        currentSolution={currentSolution}
         currentFile={currentFile}
+        queuedFile={queuedFile}
         isRunning={isRunning}
         isSaving={isSaving}
         onRun={handleRun}
-        onNewFile={() => setNewFileModalOpen(true)}
+        onNewSolution={() => setNewSolutionModalOpen(true)}
+        onNewFile={() => handleOpenNewFileModal()}
         onToggleTests={() => setShowTestCases(!showTestCases)}
         showTestCases={showTestCases}
         showSidebar={showSidebar}
@@ -231,11 +293,15 @@ public class Solution
           <>
             <Panel defaultSize="20%" minSize="15%" maxSize="35%">
               <FileExplorer
-                files={files}
+                solutions={solutions}
+                currentSolution={currentSolution}
                 currentFile={currentFile}
-                onOpen={openFile}
-                onNew={() => setNewFileModalOpen(true)}
-                onDelete={handleDelete}
+                queuedFile={queuedFile}
+                onOpenFile={openFile}
+                onNewSolution={() => setNewSolutionModalOpen(true)}
+                onNewFile={(solution) => handleOpenNewFileModal(solution)}
+                onDeleteSolution={handleDeleteSolution}
+                onDeleteFile={handleDeleteFile}
               />
             </Panel>
             <Separator
@@ -250,7 +316,7 @@ public class Solution
             <Panel defaultSize="70%" minSize="30%">
               <Flex direction="column" h="full">
                 {/* Editor tab bar */}
-                {currentFile && (
+                {currentSolution && currentFile && (
                   <Flex
                     alignItems="center"
                     h={10}
@@ -271,6 +337,9 @@ public class Solution
                       borderColor="border.default"
                     >
                       <Box w={2} h={2} borderRadius="full" bg="accent.blue" />
+                      <Text fontSize="xs" fontWeight="medium" color="text.muted">
+                        {currentSolution}/
+                      </Text>
                       <Text fontSize="xs" fontWeight="medium" color="text.primary">
                         {currentFile}.cs
                       </Text>
@@ -278,7 +347,7 @@ public class Solution
                   </Flex>
                 )}
                 <Box flex={1} overflow="hidden">
-                  {currentFile ? (
+                  {currentSolution && currentFile ? (
                     <Editor
                       code={code}
                       onChange={handleCodeChange}
@@ -304,7 +373,7 @@ public class Solution
                           No file open
                         </Text>
                         <Text fontSize="xs" color="text.muted">
-                          Create a new file or select one from the sidebar
+                          Create a solution and add files to get started
                         </Text>
                         <HStack justify="center" gap={2} mt={3}>
                           <Kbd fontSize="2xs">Ctrl+K</Kbd>
@@ -328,8 +397,8 @@ public class Solution
               <OutputPanel
                 output={output}
                 isRunning={isRunning}
-                stdin={stdin}
-                onStdinChange={setStdin}
+                stdin={currentStdin}
+                onStdinChange={handleStdinChange}
               />
             </Panel>
           </Group>
@@ -358,19 +427,31 @@ public class Solution
         lintErrorCount={lintErrors.length}
       />
 
+      <NewSolutionModal
+        open={newSolutionModalOpen}
+        onClose={() => setNewSolutionModalOpen(false)}
+        onSubmit={createNewSolution}
+      />
+
       <NewFileModal
         open={newFileModalOpen}
-        onClose={() => setNewFileModalOpen(false)}
+        onClose={() => {
+          setNewFileModalOpen(false);
+          setNewFileTargetSolution(null);
+        }}
         onSubmit={createNewFile}
+        solutionName={newFileTargetSolution || currentSolution}
       />
 
       <CommandPalette
         open={commandPaletteOpen}
         onClose={() => setCommandPaletteOpen(false)}
-        files={files}
+        solutions={solutions}
+        currentSolution={currentSolution}
         currentFile={currentFile}
         onOpenFile={openFile}
-        onNewFile={() => { setNewFileModalOpen(true); }}
+        onNewSolution={() => setNewSolutionModalOpen(true)}
+        onNewFile={() => handleOpenNewFileModal()}
         onRun={handleRun}
         onToggleTests={() => setShowTestCases((s) => !s)}
         onToggleSidebar={() => setShowSidebar((s) => !s)}
@@ -380,7 +461,7 @@ public class Solution
   );
 }
 
-function NewFileModal({
+function NewSolutionModal({
   open,
   onClose,
   onSubmit,
@@ -416,7 +497,7 @@ function NewFileModal({
       justifyContent="center"
       p={4}
       bg="black/50"
-      onClick={(e) => {
+      onClick={(e: React.MouseEvent<HTMLDivElement>) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
@@ -431,8 +512,115 @@ function NewFileModal({
         boxShadow="lg"
       >
         <Text fontSize="sm" fontWeight="bold" mb={4} color="text.primary">
+          New Solution
+        </Text>
+        <form onSubmit={handleSubmit}>
+          <Text
+            fontSize="2xs"
+            fontWeight="bold"
+            textTransform="uppercase"
+            letterSpacing="wider"
+            display="block"
+            mb={1.5}
+            color="text.muted"
+          >
+            Solution Name
+          </Text>
+          <Input
+            ref={inputRef}
+            type="text"
+            value={name}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setName(e.target.value)}
+            placeholder="e.g. LeetCodeProblems, GraphAlgorithms"
+            fontFamily="mono"
+            size="sm"
+            px={2}
+          />
+          <Flex justify="flex-end" gap={2} mt={5}>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={onClose}
+              px={4}
+            >
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              type="submit"
+              colorPalette="green"
+              disabled={!name.trim()}
+              px={4}
+            >
+              Create
+            </Button>
+          </Flex>
+        </form>
+      </Box>
+    </Box>
+  );
+}
+
+function NewFileModal({
+  open,
+  onClose,
+  onSubmit,
+  solutionName,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onSubmit: (name: string) => void;
+  solutionName: string | null;
+}) {
+  const [name, setName] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (open) {
+      setName("");
+      setTimeout(() => inputRef.current?.focus(), 50);
+    }
+  }, [open]);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onSubmit(name);
+  };
+
+  if (!open) return null;
+
+  return (
+    <Box
+      position="fixed"
+      inset={0}
+      zIndex={50}
+      display="flex"
+      alignItems="center"
+      justifyContent="center"
+      p={4}
+      bg="black/50"
+      onClick={(e: React.MouseEvent<HTMLDivElement>) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <Box
+        w="full"
+        maxW="sm"
+        borderRadius="xl"
+        p={6}
+        bg="bg.elevated"
+        border="1px solid"
+        borderColor="border.default"
+        boxShadow="lg"
+      >
+        <Text fontSize="sm" fontWeight="bold" mb={1} color="text.primary">
           New File
         </Text>
+        {solutionName && (
+          <Text fontSize="xs" color="text.muted" mb={4}>
+            in {solutionName}
+          </Text>
+        )}
         <form onSubmit={handleSubmit}>
           <Text
             fontSize="2xs"
@@ -449,13 +637,19 @@ function NewFileModal({
             ref={inputRef}
             type="text"
             value={name}
-            onChange={(e) => setName(e.target.value)}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setName(e.target.value)}
             placeholder="e.g. TwoSum, MergeSort"
             fontFamily="mono"
             size="sm"
+            px={2}
           />
           <Flex justify="flex-end" gap={2} mt={5}>
-            <Button size="sm" variant="outline" onClick={onClose}>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={onClose}
+              px={4}
+            >
               Cancel
             </Button>
             <Button
@@ -463,6 +657,7 @@ function NewFileModal({
               type="submit"
               colorPalette="green"
               disabled={!name.trim()}
+              px={4}
             >
               Create
             </Button>

@@ -8,8 +8,11 @@ import {
   FlaskConical,
   PanelLeft,
   Save,
+  FolderPlus,
+  Folder,
 } from "lucide-react";
 import { Box, Flex, HStack, Text, Kbd } from "@chakra-ui/react";
+import type { SolutionFolder } from "../api";
 
 interface Command {
   id: string;
@@ -22,9 +25,11 @@ interface Command {
 interface CommandPaletteProps {
   open: boolean;
   onClose: () => void;
-  files: { name: string; updatedAt: string }[];
+  solutions: SolutionFolder[];
+  currentSolution: string | null;
   currentFile: string | null;
-  onOpenFile: (name: string) => void;
+  onOpenFile: (solution: string, file: string) => void;
+  onNewSolution: () => void;
   onNewFile: () => void;
   onRun: () => void;
   onToggleTests: () => void;
@@ -35,9 +40,11 @@ interface CommandPaletteProps {
 export function CommandPalette({
   open,
   onClose,
-  files,
+  solutions,
+  currentSolution,
   currentFile,
   onOpenFile,
+  onNewSolution,
   onNewFile,
   onRun,
   onToggleTests,
@@ -50,18 +57,21 @@ export function CommandPalette({
 
   const commands: Command[] = [
     { id: "run", label: "Run Code", icon: <Play size={14} />, shortcut: "Ctrl+Enter", action: () => { onRun(); onClose(); } },
-    { id: "new", label: "New File", icon: <Plus size={14} />, shortcut: "Ctrl+N", action: () => { onNewFile(); onClose(); } },
+    { id: "new-solution", label: "New Solution", icon: <FolderPlus size={14} />, shortcut: "Ctrl+N", action: () => { onNewSolution(); onClose(); } },
+    { id: "new-file", label: "New File", icon: <Plus size={14} />, action: () => { onNewFile(); onClose(); } },
     { id: "save", label: "Save File", icon: <Save size={14} />, shortcut: "Ctrl+S", action: () => { onSave(); onClose(); } },
     { id: "toggle-tests", label: "Toggle Test Panel", icon: <FlaskConical size={14} />, shortcut: "Ctrl+Shift+T", action: () => { onToggleTests(); onClose(); } },
     { id: "toggle-sidebar", label: "Toggle Sidebar", icon: <PanelLeft size={14} />, shortcut: "Ctrl+B", action: () => { onToggleSidebar(); onClose(); } },
   ];
 
-  const fileCommands: Command[] = files.map((f) => ({
-    id: `file-${f.name}`,
-    label: f.name,
-    icon: <FileCode size={14} />,
-    action: () => { onOpenFile(f.name); onClose(); },
-  }));
+  const fileCommands: Command[] = solutions.flatMap((sol) =>
+    sol.files.map((f) => ({
+      id: `file-${sol.name}-${f.name}`,
+      label: `${sol.name} / ${f.name}`,
+      icon: <FileCode size={14} />,
+      action: () => { onOpenFile(sol.name, f.name); onClose(); },
+    }))
+  );
 
   const allCommands = [...commands, ...fileCommands];
 

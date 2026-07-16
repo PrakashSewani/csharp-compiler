@@ -1,11 +1,14 @@
-import { Play, Plus, FlaskConical, Loader2, Code2, PanelLeft } from "lucide-react";
+import { Play, Plus, FlaskConical, Code2, PanelLeft, FolderPlus } from "lucide-react";
 import { Box, Flex, HStack, Button, IconButton, Badge, Text, Kbd } from "@chakra-ui/react";
 
 interface HeaderProps {
+  currentSolution: string | null;
   currentFile: string | null;
+  queuedFile: string | null;
   isRunning: boolean;
   isSaving: boolean;
   onRun: () => void;
+  onNewSolution: () => void;
   onNewFile: () => void;
   onToggleTests: () => void;
   showTestCases: boolean;
@@ -14,16 +17,21 @@ interface HeaderProps {
 }
 
 export function Header({
+  currentSolution,
   currentFile,
+  queuedFile,
   isRunning,
   isSaving,
   onRun,
+  onNewSolution,
   onNewFile,
   onToggleTests,
   showTestCases,
   showSidebar,
   onToggleSidebar,
 }: HeaderProps) {
+  const queuedFileName = queuedFile ? queuedFile.split("/")[1] : null;
+
   return (
     <Box
       as="header"
@@ -69,6 +77,7 @@ export function Header({
               fontWeight="bold"
               textTransform="uppercase"
               letterSpacing="widest"
+              p={1.5}
             >
               DSA
             </Badge>
@@ -91,15 +100,29 @@ export function Header({
           size="sm"
           variant="subtle"
           colorPalette="blue"
-          onClick={onNewFile}
+          onClick={onNewSolution}
+          px={4}
         >
-          <Plus size={14} />
-          New
+          <FolderPlus size={14} />
+          New Solution
         </Button>
+
+        {currentSolution && (
+          <Button
+            size="sm"
+            variant="outline"
+            colorPalette="gray"
+            onClick={onNewFile}
+            px={4}
+          >
+            <Plus size={14} />
+            New File
+          </Button>
+        )}
       </HStack>
 
       {/* Center: Current file indicator */}
-      {currentFile && (
+      {currentSolution && currentFile && (
         <HStack gap={2}>
           <HStack
             gap={2}
@@ -111,6 +134,10 @@ export function Header({
             borderColor="border.subtle"
           >
             <Box w={2} h={2} borderRadius="full" bg="accent.blue" />
+            <Text fontSize="xs" fontFamily="mono" fontWeight="medium" color="text.muted">
+              {currentSolution}
+            </Text>
+            <Text fontSize="xs" color="text.muted">/</Text>
             <Text fontSize="xs" fontFamily="mono" fontWeight="medium" color="text.primary">
               {currentFile}.cs
             </Text>
@@ -130,17 +157,27 @@ export function Header({
 
       {/* Right: Actions */}
       <HStack gap={2.5}>
-        {currentFile && (
+        {currentSolution && currentFile && (
           <>
             <Button
               size="sm"
               variant={showTestCases ? "subtle" : "outline"}
               colorPalette={showTestCases ? "blue" : "gray"}
               onClick={onToggleTests}
+              px={4}
             >
               <FlaskConical size={14} />
               Tests
             </Button>
+
+            {queuedFileName && (
+              <HStack gap={1} px={4} py={2} borderRadius="md" bg="accent.green/10">
+                <Play size={10} fill="#22c55e" color="#22c55e" />
+                <Text fontSize="2xs" color="accent.green" fontWeight="medium">
+                  {queuedFileName}.cs
+                </Text>
+              </HStack>
+            )}
 
             <Button
               size="sm"
@@ -149,12 +186,14 @@ export function Header({
               onClick={onRun}
               loading={isRunning}
               loadingText="Running..."
+              disabled={!queuedFile}
+              px={4}
             >
               {!isRunning && <Play size={14} fill="currentColor" />}
               Run
             </Button>
 
-            <Kbd fontSize="2xs" display={{ base: "none", lg: "inline-flex" }}>
+            <Kbd fontSize="2xs" display={{ base: "none", lg: "inline-flex" }} px={4}>
               Ctrl+Enter
             </Kbd>
           </>
