@@ -12,6 +12,18 @@ import {
   Copy,
   Check,
 } from "lucide-react";
+import {
+  Box,
+  Flex,
+  HStack,
+  VStack,
+  Text,
+  Badge,
+  Button,
+  IconButton,
+  Separator,
+  Kbd,
+} from "@chakra-ui/react";
 import type { ExecutionResult } from "../api";
 
 interface OutputPanelProps {
@@ -19,6 +31,66 @@ interface OutputPanelProps {
   isRunning: boolean;
   stdin: string;
   onStdinChange: (stdin: string) => void;
+}
+
+interface StatusInfo {
+  icon: React.ReactNode;
+  text: string;
+  colorPalette: string;
+  variant: string;
+}
+
+function getStatus(isRunning: boolean, output: ExecutionResult | null): StatusInfo {
+  if (isRunning) {
+    return {
+      icon: <Loader2 size={12} className="animate-spin" />,
+      text: "Compiling & Running...",
+      colorPalette: "blue",
+      variant: "subtle",
+    };
+  }
+  if (!output) {
+    return { icon: null, text: "Ready", colorPalette: "gray", variant: "outline" };
+  }
+  if (output.timedOut) {
+    return {
+      icon: <Clock size={12} />,
+      text: "Timed Out",
+      colorPalette: "yellow",
+      variant: "subtle",
+    };
+  }
+  if (output.compileErrors) {
+    return {
+      icon: <XCircle size={12} />,
+      text: "Compilation Failed",
+      colorPalette: "red",
+      variant: "subtle",
+    };
+  }
+  if (output.exitCode !== 0) {
+    return {
+      icon: <XCircle size={12} />,
+      text: `Runtime Error`,
+      colorPalette: "red",
+      variant: "subtle",
+    };
+  }
+  if (output.testResults) {
+    const allPassed = output.testResults.passed === output.testResults.total;
+    return {
+      icon: allPassed ? <CheckCircle2 size={12} /> : <AlertTriangle size={12} />,
+      text: `${output.testResults.passed}/${output.testResults.total} Tests`,
+      colorPalette: allPassed ? "green" : "yellow",
+      variant: "subtle",
+    };
+  }
+  return {
+    icon: <CheckCircle2 size={12} />,
+    text: "Success",
+    colorPalette: "green",
+    variant: "subtle",
+  };
 }
 
 export function OutputPanel({
@@ -30,56 +102,8 @@ export function OutputPanel({
   const [expanded, setExpanded] = useState(true);
   const [activeTab, setActiveTab] = useState<"output" | "stdin">("output");
   const [copied, setCopied] = useState(false);
-  const height = expanded ? "260px" : "40px";
 
-  const getStatusIcon = () => {
-    if (isRunning)
-      return <Loader2 size={13} className="animate-spin" style={{ color: "var(--accent-blue)" }} />;
-    if (!output) return null;
-    if (output.timedOut)
-      return <Clock size={13} style={{ color: "var(--accent-yellow)" }} />;
-    if (output.compileErrors)
-      return <XCircle size={13} style={{ color: "var(--accent-red)" }} />;
-    if (output.exitCode !== 0)
-      return <XCircle size={13} style={{ color: "var(--accent-red)" }} />;
-    if (output.testResults && output.testResults.passed < output.testResults.total)
-      return <AlertTriangle size={13} style={{ color: "var(--accent-yellow)" }} />;
-    return <CheckCircle2 size={13} style={{ color: "var(--accent-green)" }} />;
-  };
-
-  const getStatusText = () => {
-    if (isRunning) return "Compiling & Running...";
-    if (!output) return "Ready";
-    if (output.timedOut) return "Timed Out (30s)";
-    if (output.compileErrors) return "Compilation Failed";
-    if (output.exitCode !== 0) return `Runtime Error (exit ${output.exitCode})`;
-    if (output.testResults) {
-      const { passed, total } = output.testResults;
-      return `${passed}/${total} Tests Passed`;
-    }
-    return "Success";
-  };
-
-  const getStatusColor = () => {
-    if (isRunning) return "var(--accent-blue)";
-    if (!output) return "var(--text-muted)";
-    if (output.timedOut) return "var(--accent-yellow)";
-    if (output.compileErrors || output.exitCode !== 0) return "var(--accent-red)";
-    if (output.testResults && output.testResults.passed < output.testResults.total)
-      return "var(--accent-yellow)";
-    return "var(--accent-green)";
-  };
-
-  const getStatusBg = () => {
-    if (isRunning) return "rgba(76, 154, 255, 0.1)";
-    if (!output) return "transparent";
-    if (output.timedOut || (output.testResults && output.testResults.passed < output.testResults.total))
-      return "rgba(240, 180, 76, 0.1)";
-    if (output.compileErrors || output.exitCode !== 0) return "rgba(240, 107, 107, 0.1)";
-    if (output.testResults && output.testResults.passed === output.testResults.total)
-      return "rgba(61, 214, 140, 0.1)";
-    return "rgba(61, 214, 140, 0.1)";
-  };
+  const status = getStatus(isRunning, output);
 
   const getFullOutput = () => {
     if (!output) return "";
@@ -97,312 +121,355 @@ export function OutputPanel({
   };
 
   return (
-    <div
-      className="shrink-0 flex flex-col transition-all duration-200"
-      style={{
-        height,
-        background: "var(--bg-panel)",
-        borderTop: "1px solid var(--border-subtle)",
-      }}
+    <Box
+      h="100%"
+      display="flex"
+      flexDirection="column"
+      bg="bg.panel"
     >
       {/* Title bar */}
-      <div
-        className="flex items-center justify-between px-4 h-10 shrink-0 cursor-pointer select-none"
-        style={{
-          borderBottom: expanded ? "1px solid var(--border-subtle)" : "none",
-          background: "var(--bg-panel)",
-        }}
+      <Flex
+        alignItems="center"
+        justifyContent="space-between"
+        px={4}
+        h={10}
+        flexShrink={0}
+        cursor="pointer"
+        userSelect="none"
+        borderBottom={expanded ? "1px solid" : "none"}
+        borderColor="border.subtle"
         onClick={() => setExpanded(!expanded)}
       >
-        <div className="flex items-center gap-3">
-          <Terminal size={13} style={{ color: "var(--text-muted)" }} />
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>
-              Output
-            </span>
-            {output && (
-              <span
-                className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
-                style={{
-                  background: getStatusBg(),
-                  color: getStatusColor(),
-                }}
-              >
-                {getStatusText()}
-              </span>
-            )}
-          </div>
-          {getStatusIcon()}
-        </div>
+        <HStack gap={3}>
+          <Terminal size={13} color="#546478" />
+          <Text fontSize="xs" fontWeight="medium" color="text.secondary">
+            Output
+          </Text>
+          {status.text !== "Ready" && (
+            <Badge size="sm" colorPalette={status.colorPalette} variant={status.variant as any}>
+              {status.text}
+            </Badge>
+          )}
+          {status.icon}
+        </HStack>
 
-        <div className="flex items-center gap-2">
+        <HStack gap={2}>
           {output?.testResults && (
-            <span
-              className="text-[10px] px-2 py-0.5 rounded-full font-bold font-mono"
-              style={{
-                background:
-                  output.testResults.passed === output.testResults.total
-                    ? "rgba(61, 214, 140, 0.15)"
-                    : "rgba(240, 107, 107, 0.15)",
-                color:
-                  output.testResults.passed === output.testResults.total
-                    ? "var(--accent-green)"
-                    : "var(--accent-red)",
-              }}
+            <Badge
+              size="sm"
+              colorPalette={
+                output.testResults.passed === output.testResults.total ? "green" : "red"
+              }
+              variant="subtle"
+              fontFamily="mono"
+              fontWeight="bold"
             >
               {output.testResults.passed}/{output.testResults.total}
-            </span>
+            </Badge>
           )}
 
           {expanded && output && (
-            <button
+            <IconButton
+              aria-label="Copy output"
+              size="xs"
+              variant="ghost"
+              color={copied ? "accent.green" : "text.muted"}
               onClick={(e) => {
                 e.stopPropagation();
                 handleCopy();
               }}
-              className="w-6 h-6 rounded-md flex items-center justify-center transition-all cursor-pointer"
-              style={{
-                background: "var(--bg-surface)",
-                color: copied ? "var(--accent-green)" : "var(--text-muted)",
-                border: "1px solid var(--border-subtle)",
-              }}
-              title="Copy output"
             >
-              {copied ? <Check size={12} /> : <Copy size={12} />}
-            </button>
+              {copied ? <Check size={11} /> : <Copy size={11} />}
+            </IconButton>
           )}
 
           {expanded ? (
-            <ChevronDown size={14} style={{ color: "var(--text-muted)" }} />
+            <ChevronDown size={14} color="#546478" />
           ) : (
-            <ChevronUp size={14} style={{ color: "var(--text-muted)" }} />
+            <ChevronUp size={14} color="#546478" />
           )}
-        </div>
-      </div>
+        </HStack>
+      </Flex>
 
       {/* Content */}
       {expanded && (
-        <div className="flex-1 flex flex-col overflow-hidden">
+        <Box flex={1} display="flex" flexDirection="column" overflow="hidden">
           {/* Tabs */}
-          <div
-            className="flex gap-0 h-9 shrink-0 px-2"
-            style={{ borderBottom: "1px solid var(--border-subtle)" }}
+          <HStack
+            gap={0}
+            h={9}
+            flexShrink={0}
+            px={2}
+            borderBottom="1px solid"
+            borderColor="border.subtle"
           >
             {(["output", "stdin"] as const).map((tab) => (
-              <button
+              <Button
                 key={tab}
-                className="px-3 text-[11px] font-semibold transition-all cursor-pointer flex items-center gap-1.5"
-                style={{
-                  color:
-                    activeTab === tab
-                      ? "var(--text-primary)"
-                      : "var(--text-muted)",
-                  borderBottom:
-                    activeTab === tab
-                      ? "2px solid var(--accent-blue)"
-                      : "2px solid transparent",
-                  background: "transparent",
-                  border: "none",
-                  borderBottomWidth: 2,
-                  borderBottomStyle: "solid",
-                  borderBottomColor:
-                    activeTab === tab ? "var(--accent-blue)" : "transparent",
-                }}
+                size="xs"
+                variant="ghost"
+                color={activeTab === tab ? "text.primary" : "text.muted"}
+                borderBottom="2px solid"
+                borderBottomColor={activeTab === tab ? "accent.blue" : "transparent"}
+                borderRadius="none"
+                px={3}
+                fontWeight="semibold"
                 onClick={() => setActiveTab(tab)}
               >
                 {tab === "stdin" && <Keyboard size={12} />}
                 {tab === "output" ? "Output" : "Stdin"}
-              </button>
+              </Button>
             ))}
-          </div>
+          </HStack>
 
           {/* Tab content */}
-          <div className="flex-1 overflow-auto">
+          <Box flex={1} overflow="auto">
             {activeTab === "output" ? (
-              <div className="p-4">
+              <Box p={4}>
                 {isRunning ? (
-                  <div className="flex items-center gap-3 py-4">
-                    <div
-                      className="w-8 h-8 rounded-lg flex items-center justify-center"
-                      style={{ background: "rgba(76, 154, 255, 0.15)" }}
-                    >
-                      <Loader2 size={16} className="animate-spin" style={{ color: "var(--accent-blue)" }} />
-                    </div>
-                    <div>
-                      <div className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
+                  <HStack gap={3} py={4}>
+                    <Loader2 size={16} className="animate-spin" color="#3b82f6" />
+                    <Box>
+                      <Text fontSize="sm" fontWeight="medium" color="text.primary">
                         Compiling and running...
-                      </div>
-                      <div className="text-[11px]" style={{ color: "var(--text-muted)" }}>
+                      </Text>
+                      <Text fontSize="2xs" color="text.muted">
                         Spawning sandbox container
-                      </div>
-                    </div>
-                  </div>
+                      </Text>
+                    </Box>
+                  </HStack>
                 ) : output ? (
-                  <div className="space-y-3">
+                  <VStack gap={3} align="stretch">
                     {output.compileErrors && (
-                      <div>
-                        <div
-                          className="text-[11px] font-bold uppercase tracking-wider mb-2"
-                          style={{ color: "var(--accent-red)" }}
+                      <Box>
+                        <Text
+                          fontSize="2xs"
+                          fontWeight="bold"
+                          textTransform="uppercase"
+                          letterSpacing="wider"
+                          mb={2}
+                          color="accent.red"
                         >
                           Compilation Errors
-                        </div>
-                        <pre
-                          className="text-xs font-mono whitespace-pre-wrap p-3 rounded-lg leading-relaxed"
-                          style={{
-                            background: "rgba(240, 107, 107, 0.06)",
-                            color: "var(--accent-red)",
-                            border: "1px solid rgba(240, 107, 107, 0.15)",
-                          }}
+                        </Text>
+                        <Box
+                          as="pre"
+                          fontSize="xs"
+                          fontFamily="mono"
+                          whiteSpace="pre-wrap"
+                          p={3}
+                          borderRadius="lg"
+                          lineHeight="relaxed"
+                          bg="accent.red/6"
+                          color="accent.red"
+                          border="1px solid"
+                          borderColor="accent.red/15"
                         >
                           {output.compileErrors}
-                        </pre>
-                      </div>
+                        </Box>
+                      </Box>
                     )}
 
                     {output.stderr && !output.compileErrors && (
-                      <div>
-                        <div
-                          className="text-[11px] font-bold uppercase tracking-wider mb-2"
-                          style={{ color: "var(--accent-yellow)" }}
+                      <Box>
+                        <Text
+                          fontSize="2xs"
+                          fontWeight="bold"
+                          textTransform="uppercase"
+                          letterSpacing="wider"
+                          mb={2}
+                          color="accent.yellow"
                         >
                           Stderr
-                        </div>
-                        <pre
-                          className="text-xs font-mono whitespace-pre-wrap p-3 rounded-lg leading-relaxed"
-                          style={{
-                            background: "rgba(240, 180, 76, 0.06)",
-                            color: "var(--accent-yellow)",
-                            border: "1px solid rgba(240, 180, 76, 0.15)",
-                          }}
+                        </Text>
+                        <Box
+                          as="pre"
+                          fontSize="xs"
+                          fontFamily="mono"
+                          whiteSpace="pre-wrap"
+                          p={3}
+                          borderRadius="lg"
+                          lineHeight="relaxed"
+                          bg="accent.yellow/6"
+                          color="accent.yellow"
+                          border="1px solid"
+                          borderColor="accent.yellow/15"
                         >
                           {output.stderr}
-                        </pre>
-                      </div>
+                        </Box>
+                      </Box>
                     )}
 
                     {output.testResults && (
-                      <div>
-                        <div
-                          className="text-[11px] font-bold uppercase tracking-wider mb-2"
-                          style={{
-                            color:
-                              output.testResults.passed === output.testResults.total
-                                ? "var(--accent-green)"
-                                : "var(--accent-yellow)",
-                          }}
+                      <Box>
+                        <Text
+                          fontSize="2xs"
+                          fontWeight="bold"
+                          textTransform="uppercase"
+                          letterSpacing="wider"
+                          mb={2}
+                          color={
+                            output.testResults.passed === output.testResults.total
+                              ? "accent.green"
+                              : "accent.yellow"
+                          }
                         >
-                          Test Results: {output.testResults.passed}/{output.testResults.total} passed
-                        </div>
-                        <div className="space-y-1.5">
+                          Test Results
+                        </Text>
+                        <VStack gap={2} align="stretch">
                           {output.testResults.details.map((d, i) => (
-                            <div
+                            <Flex
                               key={i}
-                              className="text-xs font-mono p-3 rounded-lg flex items-start gap-3"
-                              style={{
-                                background: d.passed
-                                  ? "rgba(61, 214, 140, 0.06)"
-                                  : "rgba(240, 107, 107, 0.06)",
-                                border: `1px solid ${d.passed ? "rgba(61, 214, 140, 0.15)" : "rgba(240, 107, 107, 0.15)"}`,
-                              }}
+                              fontSize="xs"
+                              fontFamily="mono"
+                              p={3}
+                              borderRadius="lg"
+                              alignItems="flex-start"
+                              gap={3}
+                              bg={d.passed ? "accent.green/6" : "accent.red/6"}
+                              border="1px solid"
+                              borderColor={d.passed ? "accent.green/15" : "accent.red/15"}
                             >
                               {d.passed ? (
                                 <CheckCircle2
                                   size={14}
-                                  style={{ color: "var(--accent-green)", flexShrink: 0, marginTop: 2 }}
+                                  color="#22c55e"
+                                  style={{ flexShrink: 0, marginTop: 2 }}
                                 />
                               ) : (
                                 <XCircle
                                   size={14}
-                                  style={{ color: "var(--accent-red)", flexShrink: 0, marginTop: 2 }}
+                                  color="#ef4444"
+                                  style={{ flexShrink: 0, marginTop: 2 }}
                                 />
                               )}
-                              <div className="space-y-0.5">
-                                <div
-                                  className="font-semibold"
-                                  style={{ color: d.passed ? "var(--accent-green)" : "var(--accent-red)" }}
-                                >
-                                  Test {i + 1}: {d.passed ? "PASS" : "FAIL"}
-                                </div>
+                              <Box flex={1} minW={0}>
+                                <HStack gap={2}>
+                                  <Text
+                                    fontWeight="semibold"
+                                    color={d.passed ? "accent.green" : "accent.red"}
+                                  >
+                                    Test {i + 1}: {d.passed ? "PASS" : "FAIL"}
+                                  </Text>
+                                  <Text
+                                    fontSize="2xs"
+                                    fontFamily="mono"
+                                    px={1.5}
+                                    py={0.5}
+                                    borderRadius="md"
+                                    bg="bg.hover"
+                                    color="text.muted"
+                                    truncate
+                                    maxW="200px"
+                                  >
+                                    {d.input.slice(0, 30)}
+                                    {d.input.length > 30 ? "..." : ""}
+                                  </Text>
+                                </HStack>
                                 {!d.passed && (
-                                  <>
-                                    <div style={{ color: "var(--text-secondary)" }}>
-                                      Expected: <span className="text-white">{d.expected}</span>
-                                    </div>
-                                    <div style={{ color: "var(--text-secondary)" }}>
-                                      Got: <span style={{ color: "var(--accent-red)" }}>{d.actual}</span>
-                                    </div>
-                                  </>
+                                  <VStack gap={0.5} align="stretch" mt={1}>
+                                    <Text color="text.muted">
+                                      Expected: <Text as="span" color="accent.green">{d.expected}</Text>
+                                    </Text>
+                                    <Text color="text.muted">
+                                      Got: <Text as="span" color="accent.red">{d.actual}</Text>
+                                    </Text>
+                                  </VStack>
                                 )}
-                              </div>
-                            </div>
+                              </Box>
+                            </Flex>
                           ))}
-                        </div>
-                      </div>
+                        </VStack>
+                      </Box>
                     )}
 
                     {output.stdout && (
-                      <div>
-                        <div
-                          className="text-[11px] font-bold uppercase tracking-wider mb-2"
-                          style={{ color: "var(--text-muted)" }}
+                      <Box>
+                        <Text
+                          fontSize="2xs"
+                          fontWeight="bold"
+                          textTransform="uppercase"
+                          letterSpacing="wider"
+                          mb={2}
+                          color="text.muted"
                         >
                           Program Output
-                        </div>
-                        <pre
-                          className="text-xs font-mono whitespace-pre-wrap p-3 rounded-lg leading-relaxed"
-                          style={{
-                            background: "var(--bg-surface)",
-                            color: "var(--text-primary)",
-                            border: "1px solid var(--border-subtle)",
-                          }}
+                        </Text>
+                        <Box
+                          as="pre"
+                          fontSize="xs"
+                          fontFamily="mono"
+                          whiteSpace="pre-wrap"
+                          p={3}
+                          borderRadius="lg"
+                          lineHeight="relaxed"
+                          bg="bg.surface"
+                          color="text.primary"
+                          border="1px solid"
+                          borderColor="border.subtle"
                         >
                           {output.stdout}
-                        </pre>
-                      </div>
+                        </Box>
+                      </Box>
                     )}
 
                     {!output.stdout &&
                       !output.stderr &&
                       !output.compileErrors &&
                       !output.testResults && (
-                        <div className="text-xs py-4" style={{ color: "var(--text-muted)" }}>
+                        <Text fontSize="xs" py={4} color="text.muted">
                           (No output)
-                        </div>
+                        </Text>
                       )}
-                  </div>
+                  </VStack>
                 ) : (
-                  <div className="flex flex-col items-center justify-center py-8">
-                    <Terminal size={24} style={{ color: "var(--text-muted)", opacity: 0.3, marginBottom: 8 }} />
-                    <div className="text-xs" style={{ color: "var(--text-muted)" }}>
-                      Click <span className="font-semibold" style={{ color: "var(--accent-green)" }}>Run</span> or
-                      press <kbd className="px-1.5 py-0.5 rounded text-[10px] font-mono" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-default)" }}>Ctrl</kbd>+<kbd className="px-1.5 py-0.5 rounded text-[10px] font-mono" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-default)" }}>Enter</kbd> to execute
-                    </div>
-                  </div>
+                  <Flex flexDirection="column" alignItems="center" justifyContent="center" py={8}>
+                    <Box mb={2}>
+                      <Terminal size={24} color="#546478" style={{ opacity: 0.3 }} />
+                    </Box>
+                    <Text fontSize="xs" color="text.muted">
+                      Click{" "}
+                      <Text as="span" fontWeight="semibold" color="accent.green">
+                        Run
+                      </Text>{" "}
+                      or press{" "}
+                      <Kbd fontSize="2xs">Ctrl</Kbd>+<Kbd fontSize="2xs">Enter</Kbd> to execute
+                    </Text>
+                  </Flex>
                 )}
-              </div>
+              </Box>
             ) : (
-              <div className="p-4">
-                <div className="text-xs mb-2" style={{ color: "var(--text-secondary)" }}>
-                  Input for <span className="font-mono" style={{ color: "var(--accent-purple)" }}>Console.ReadLine()</span>
-                </div>
+              <Box p={4}>
+                <Text fontSize="xs" mb={2} color="text.secondary">
+                  Input for{" "}
+                  <Text as="span" fontFamily="mono" color="accent.purple">
+                    Console.ReadLine()
+                  </Text>
+                </Text>
                 <textarea
-                  value={stdin}
-                  onChange={(e) => onStdinChange(e.target.value)}
-                  className="w-full h-24 p-3 rounded-lg text-xs font-mono resize-none outline-none"
                   style={{
-                    background: "var(--bg-surface)",
-                    color: "var(--text-primary)",
-                    border: "1px solid var(--border-subtle)",
+                    width: "100%",
+                    height: "96px",
+                    padding: "12px",
+                    borderRadius: "8px",
+                    fontSize: "12px",
+                    fontFamily: "monospace",
+                    resize: "none",
+                    outline: "none",
+                    background: "#0e1319",
+                    color: "#f0f4f8",
+                    border: "1px solid #182030",
                   }}
                   placeholder="Enter input here..."
                   spellCheck={false}
+                  value={stdin}
+                  onChange={(e) => onStdinChange(e.target.value)}
                 />
-              </div>
+              </Box>
             )}
-          </div>
-        </div>
+          </Box>
+        </Box>
       )}
-    </div>
+    </Box>
   );
 }

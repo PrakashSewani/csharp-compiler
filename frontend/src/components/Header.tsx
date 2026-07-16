@@ -1,4 +1,5 @@
-import { Play, Plus, FlaskConical, Loader2, Code2, Sparkles } from "lucide-react";
+import { Play, Plus, FlaskConical, Loader2, Code2, PanelLeft } from "lucide-react";
+import { Box, Flex, HStack, Button, IconButton, Badge, Text, Kbd } from "@chakra-ui/react";
 
 interface HeaderProps {
   currentFile: string | null;
@@ -8,6 +9,8 @@ interface HeaderProps {
   onNewFile: () => void;
   onToggleTests: () => void;
   showTestCases: boolean;
+  showSidebar: boolean;
+  onToggleSidebar: () => void;
 }
 
 export function Header({
@@ -18,168 +21,145 @@ export function Header({
   onNewFile,
   onToggleTests,
   showTestCases,
+  showSidebar,
+  onToggleSidebar,
 }: HeaderProps) {
   return (
-    <header
-      className="flex items-center justify-between px-5 h-14 shrink-0"
-      style={{
-        background: "linear-gradient(180deg, var(--bg-elevated) 0%, var(--bg-panel) 100%)",
-        borderBottom: "1px solid var(--border-subtle)",
-        boxShadow: "0 1px 4px rgba(0,0,0,0.3)",
-      }}
+    <Box
+      as="header"
+      px={5}
+      h={14}
+      display="flex"
+      alignItems="center"
+      justifyContent="space-between"
+      flexShrink={0}
+      bg="bg.elevated"
+      borderBottom="1px solid"
+      borderColor="border.subtle"
     >
-      {/* Left: Logo + New File */}
-      <div className="flex items-center gap-4">
-        <div className="flex items-center gap-2.5">
-          <div
-            className="w-8 h-8 rounded-lg flex items-center justify-center"
-            style={{
-              background: "linear-gradient(135deg, var(--accent-blue) 0%, var(--accent-purple) 100%)",
-              boxShadow: "0 2px 8px rgba(76, 154, 255, 0.3)",
-            }}
+      {/* Left: Logo + Actions */}
+      <HStack gap={4}>
+        <HStack gap={2.5}>
+          <Box
+            w={8}
+            h={8}
+            borderRadius="lg"
+            display="flex"
+            alignItems="center"
+            justifyContent="center"
+            bg="accent.blue"
+            color="white"
           >
-            <Code2 size={16} color="#fff" />
-          </div>
-          <div>
-            <span className="text-sm font-bold tracking-tight" style={{ color: "var(--text-primary)" }}>
+            <Code2 size={16} />
+          </Box>
+          <HStack gap={2}>
+            <Text
+              fontSize="sm"
+              fontWeight="bold"
+              letterSpacing="tight"
+              color="text.primary"
+            >
               C# Playground
-            </span>
-            <span
-              className="text-[10px] ml-2 px-1.5 py-0.5 rounded-full font-medium"
-              style={{
-                background: "rgba(76, 154, 255, 0.15)",
-                color: "var(--accent-blue)",
-                border: "1px solid rgba(76, 154, 255, 0.2)",
-              }}
+            </Text>
+            <Badge
+              size="sm"
+              variant="subtle"
+              colorPalette="blue"
+              fontSize="9px"
+              fontWeight="bold"
+              textTransform="uppercase"
+              letterSpacing="widest"
             >
               DSA
-            </span>
-          </div>
-        </div>
+            </Badge>
+          </HStack>
+        </HStack>
 
-        <div className="h-6 w-px" style={{ background: "var(--border-default)" }} />
+        <Box w="px" h={5} bg="border.default" />
 
-        <button
+        <IconButton
+          aria-label="Toggle sidebar"
+          size="sm"
+          variant={showSidebar ? "subtle" : "ghost"}
+          colorPalette={showSidebar ? "blue" : "gray"}
+          onClick={onToggleSidebar}
+        >
+          <PanelLeft size={14} />
+        </IconButton>
+
+        <Button
+          size="sm"
+          variant="subtle"
+          colorPalette="blue"
           onClick={onNewFile}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 cursor-pointer"
-          style={{
-            background: "var(--bg-surface)",
-            color: "var(--text-primary)",
-            border: "1px solid var(--border-default)",
-            boxShadow: "var(--shadow-sm)",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = "var(--bg-hover)";
-            e.currentTarget.style.borderColor = "var(--border-strong)";
-            e.currentTarget.style.transform = "translateY(-1px)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = "var(--bg-surface)";
-            e.currentTarget.style.borderColor = "var(--border-default)";
-            e.currentTarget.style.transform = "translateY(0)";
-          }}
         >
           <Plus size={14} />
-          New File
-        </button>
-      </div>
+          New
+        </Button>
+      </HStack>
 
       {/* Center: Current file indicator */}
       {currentFile && (
-        <div className="flex items-center gap-3">
-          <div
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg"
-            style={{
-              background: "var(--bg-surface)",
-              border: "1px solid var(--border-subtle)",
-            }}
+        <HStack gap={2}>
+          <HStack
+            gap={2}
+            px={3}
+            py={1.5}
+            borderRadius="md"
+            bg="bg.surface"
+            border="1px solid"
+            borderColor="border.subtle"
           >
-            <Sparkles size={12} style={{ color: "var(--accent-purple)" }} />
-            <span
-              className="text-xs font-semibold font-mono"
-              style={{ color: "var(--accent-purple)" }}
-            >
+            <Box w={2} h={2} borderRadius="full" bg="accent.blue" />
+            <Text fontSize="xs" fontFamily="mono" fontWeight="medium" color="text.primary">
               {currentFile}.cs
-            </span>
-          </div>
+            </Text>
+          </HStack>
 
           {isSaving && (
-            <span
-              className="text-[11px] animate-pulse-glow"
-              style={{ color: "var(--text-muted)" }}
+            <Text
+              fontSize="2xs"
+              color="text.muted"
+              animation="pulse-glow 2s ease-in-out infinite"
             >
               Saving...
-            </span>
+            </Text>
           )}
-        </div>
+        </HStack>
       )}
 
       {/* Right: Actions */}
-      <div className="flex items-center gap-3">
+      <HStack gap={2.5}>
         {currentFile && (
           <>
-            <button
+            <Button
+              size="sm"
+              variant={showTestCases ? "subtle" : "outline"}
+              colorPalette={showTestCases ? "blue" : "gray"}
               onClick={onToggleTests}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 cursor-pointer"
-              style={{
-                background: showTestCases
-                  ? "rgba(76, 154, 255, 0.15)"
-                  : "var(--bg-surface)",
-                color: showTestCases ? "var(--accent-blue)" : "var(--text-secondary)",
-                border: `1px solid ${showTestCases ? "rgba(76, 154, 255, 0.3)" : "var(--border-default)"}`,
-              }}
-              onMouseEnter={(e) => {
-                if (!showTestCases) e.currentTarget.style.background = "var(--bg-hover)";
-              }}
-              onMouseLeave={(e) => {
-                if (!showTestCases) e.currentTarget.style.background = "var(--bg-surface)";
-              }}
             >
               <FlaskConical size={14} />
               Tests
-            </button>
+            </Button>
 
-            <button
+            <Button
+              size="sm"
+              variant="solid"
+              colorPalette="green"
               onClick={onRun}
-              disabled={isRunning}
-              className="flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-bold transition-all duration-150 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
-              style={{
-                background: isRunning
-                  ? "var(--accent-blue)"
-                  : "linear-gradient(135deg, var(--accent-green) 0%, #2ab874 100%)",
-                color: "#fff",
-                boxShadow: isRunning
-                  ? "0 2px 12px rgba(76, 154, 255, 0.3)"
-                  : "0 2px 12px rgba(61, 214, 140, 0.3)",
-              }}
-              onMouseEnter={(e) => {
-                if (!isRunning) {
-                  e.currentTarget.style.transform = "translateY(-1px)";
-                  e.currentTarget.style.boxShadow = "0 4px 16px rgba(61, 214, 140, 0.4)";
-                }
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = "translateY(0)";
-                e.currentTarget.style.boxShadow = isRunning
-                  ? "0 2px 12px rgba(76, 154, 255, 0.3)"
-                  : "0 2px 12px rgba(61, 214, 140, 0.3)";
-              }}
+              loading={isRunning}
+              loadingText="Running..."
             >
-              {isRunning ? (
-                <>
-                  <Loader2 size={14} className="animate-spin" />
-                  Running...
-                </>
-              ) : (
-                <>
-                  <Play size={14} fill="currentColor" />
-                  Run
-                </>
-              )}
-            </button>
+              {!isRunning && <Play size={14} fill="currentColor" />}
+              Run
+            </Button>
+
+            <Kbd fontSize="2xs" display={{ base: "none", lg: "inline-flex" }}>
+              Ctrl+Enter
+            </Kbd>
           </>
         )}
-      </div>
-    </header>
+      </HStack>
+    </Box>
   );
 }

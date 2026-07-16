@@ -1,13 +1,32 @@
 import { useState } from "react";
-import { Plus, Trash2, ChevronDown, ChevronRight, Beaker } from "lucide-react";
+import {
+  Plus,
+  Trash2,
+  ChevronDown,
+  ChevronRight,
+  Copy,
+  ChevronUp,
+  ChevronDown as ChevronDownIcon,
+} from "lucide-react";
+import {
+  Box,
+  Flex,
+  HStack,
+  VStack,
+  Text,
+  IconButton,
+  Badge,
+  Textarea,
+} from "@chakra-ui/react";
 import type { TestCase } from "../api";
 
 interface TestCasePanelProps {
   testCases: TestCase[];
   onChange: (testCases: TestCase[]) => void;
+  onRunAll: () => void;
 }
 
-export function TestCasePanel({ testCases, onChange }: TestCasePanelProps) {
+export function TestCasePanel({ testCases, onChange, onRunAll }: TestCasePanelProps) {
   const [expanded, setExpanded] = useState<number | null>(0);
 
   const addTestCase = () => {
@@ -16,11 +35,31 @@ export function TestCasePanel({ testCases, onChange }: TestCasePanelProps) {
     setExpanded(newCases.length - 1);
   };
 
+  const duplicateTestCase = (index: number) => {
+    const original = testCases[index];
+    const newCases = [
+      ...testCases.slice(0, index + 1),
+      { ...original },
+      ...testCases.slice(index + 1),
+    ];
+    onChange(newCases);
+    setExpanded(index + 1);
+  };
+
   const removeTestCase = (index: number) => {
     const newCases = testCases.filter((_, i) => i !== index);
     onChange(newCases);
     if (expanded === index) setExpanded(null);
     else if (expanded !== null && expanded > index) setExpanded(expanded - 1);
+  };
+
+  const moveTestCase = (index: number, direction: "up" | "down") => {
+    const newIndex = direction === "up" ? index - 1 : index + 1;
+    if (newIndex < 0 || newIndex >= testCases.length) return;
+    const newCases = [...testCases];
+    [newCases[index], newCases[newIndex]] = [newCases[newIndex], newCases[index]];
+    onChange(newCases);
+    setExpanded(newIndex);
   };
 
   const updateTestCase = (
@@ -34,217 +73,290 @@ export function TestCasePanel({ testCases, onChange }: TestCasePanelProps) {
   };
 
   return (
-    <aside
-      className="w-80 shrink-0 flex flex-col overflow-hidden"
-      style={{
-        background: "var(--bg-panel)",
-        borderLeft: "1px solid var(--border-subtle)",
-      }}
+    <Box
+      h="100%"
+      display="flex"
+      flexDirection="column"
+      overflow="hidden"
+      bg="bg.panel"
     >
       {/* Header */}
-      <div
-        className="flex items-center justify-between px-4 pt-4 pb-3 shrink-0"
-        style={{ borderBottom: "1px solid var(--border-subtle)" }}
+      <Flex
+        alignItems="center"
+        justifyContent="space-between"
+        px={4}
+        pt={4}
+        pb={3}
+        flexShrink={0}
+        borderBottom="1px solid"
+        borderColor="border.subtle"
       >
-        <div className="flex items-center gap-2">
-          <Beaker size={14} style={{ color: "var(--accent-purple)" }} />
-          <span
-            className="text-[11px] font-bold uppercase tracking-widest"
-            style={{ color: "var(--text-muted)" }}
+        <HStack gap={2}>
+          <Text
+            fontSize="2xs"
+            fontWeight="bold"
+            textTransform="uppercase"
+            letterSpacing="widest"
+            color="text.muted"
           >
             Test Cases
-          </span>
+          </Text>
           {testCases.length > 0 && (
-            <span
-              className="text-[10px] px-1.5 py-0.5 rounded-full font-bold"
-              style={{
-                background: "rgba(167, 139, 250, 0.15)",
-                color: "var(--accent-purple)",
-              }}
-            >
+            <Badge size="sm" colorPalette="purple" variant="subtle">
               {testCases.length}
-            </span>
+            </Badge>
           )}
-        </div>
-        <button
+        </HStack>
+        <IconButton
+          aria-label="Add test case"
+          size="xs"
+          variant="outline"
+          colorPalette="purple"
           onClick={addTestCase}
-          className="w-6 h-6 rounded-md flex items-center justify-center transition-all duration-150 cursor-pointer"
-          style={{
-            background: "var(--bg-surface)",
-            color: "var(--text-secondary)",
-            border: "1px solid var(--border-default)",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = "var(--accent-purple)";
-            e.currentTarget.style.color = "#fff";
-            e.currentTarget.style.borderColor = "var(--accent-purple)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = "var(--bg-surface)";
-            e.currentTarget.style.color = "var(--text-secondary)";
-            e.currentTarget.style.borderColor = "var(--border-default)";
-          }}
-          title="Add test case"
         >
           <Plus size={13} />
-        </button>
-      </div>
+        </IconButton>
+      </Flex>
 
       {/* Test case list */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-2">
+      <Box flex={1} overflowY="auto" p={3}>
         {testCases.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full px-4 py-8">
-            <div
-              className="w-12 h-12 rounded-xl flex items-center justify-center mb-3"
-              style={{ background: "var(--bg-surface)" }}
+          <Flex
+            direction="column"
+            alignItems="center"
+            justifyContent="center"
+            h="full"
+            px={4}
+            py={8}
+          >
+            <Box
+              w={12}
+              h={12}
+              borderRadius="xl"
+              display="flex"
+              alignItems="center"
+              justifyContent="center"
+              mb={3}
+              bg="bg.surface"
             >
-              <Beaker size={24} style={{ color: "var(--text-muted)", opacity: 0.4 }} />
-            </div>
-            <p className="text-xs text-center leading-relaxed" style={{ color: "var(--text-muted)" }}>
+              <Plus size={24} color="#546478" opacity={0.4} />
+            </Box>
+            <Text
+              fontSize="xs"
+              textAlign="center"
+              lineHeight="relaxed"
+              color="text.muted"
+            >
               No test cases yet
-              <br />
-              <span className="text-[11px]">
-                Your <span className="font-mono" style={{ color: "var(--accent-purple)" }}>Solution.Solve()</span> method
-                <br />
-                will be called with each input
-              </span>
-            </p>
-          </div>
+            </Text>
+            <Text
+              fontSize="2xs"
+              textAlign="center"
+              mt={1}
+              color="text.muted"
+            >
+              Your{" "}
+              <Text as="span" fontFamily="mono" fontWeight="semibold" color="accent.purple">
+                Solution.Solve()
+              </Text>{" "}
+              method will be called with each input
+            </Text>
+            <Text
+              as="button"
+              fontSize="xs"
+              fontWeight="medium"
+              mt={3}
+              color="accent.purple"
+              onClick={addTestCase}
+              _hover={{ textDecoration: "underline" }}
+            >
+              Add your first test case
+            </Text>
+          </Flex>
         ) : (
-          testCases.map((tc, i) => {
-            const isOpen = expanded === i;
-            const hasContent = tc.input || tc.expectedOutput;
+          <VStack gap={2} align="stretch">
+            {testCases.map((tc, i) => {
+              const isOpen = expanded === i;
+              const hasContent = tc.input || tc.expectedOutput;
 
-            return (
-              <div
-                key={i}
-                className="rounded-lg overflow-hidden transition-all duration-150"
-                style={{
-                  border: `1px solid ${isOpen ? "var(--border-strong)" : "var(--border-subtle)"}`,
-                  background: isOpen ? "var(--bg-surface)" : "var(--bg-elevated)",
-                }}
-              >
-                {/* Accordion header */}
-                <div
-                  className="flex items-center gap-2 px-3 py-2.5 cursor-pointer select-none"
-                  style={{
-                    borderBottom: isOpen ? "1px solid var(--border-subtle)" : "none",
-                  }}
-                  onClick={() => setExpanded(isOpen ? null : i)}
+              return (
+                <Box
+                  key={i}
+                  borderRadius="lg"
+                  overflow="hidden"
+                  transition="all 150ms"
+                  border="1px solid"
+                  borderColor={isOpen ? "border.strong" : "border.subtle"}
+                  bg={isOpen ? "bg.surface" : "bg.elevated"}
                 >
-                  <div style={{ color: "var(--text-muted)" }}>
-                    {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                  </div>
-                  <span
-                    className="text-xs font-semibold flex-1"
-                    style={{ color: "var(--text-primary)" }}
+                  {/* Accordion header */}
+                  <Flex
+                    alignItems="center"
+                    gap={2}
+                    px={3}
+                    py={2.5}
+                    cursor="pointer"
+                    userSelect="none"
+                    borderBottom={isOpen ? "1px solid" : "none"}
+                    borderColor="border.subtle"
+                    onClick={() => setExpanded(isOpen ? null : i)}
+                    _hover={{ bg: "bg.hover" }}
                   >
-                    Test {i + 1}
-                  </span>
-                  {hasContent && !isOpen && (
-                    <span
-                      className="text-[10px] font-mono px-1.5 py-0.5 rounded max-w-[120px] truncate"
-                      style={{
-                        background: "var(--bg-hover)",
-                        color: "var(--text-muted)",
-                      }}
+                    <Box color="text.muted">
+                      {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                    </Box>
+                    <Text
+                      fontSize="xs"
+                      fontWeight="semibold"
+                      flex={1}
+                      color="text.primary"
                     >
-                      {tc.input || "(empty)"}
-                    </span>
-                  )}
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      removeTestCase(i);
-                    }}
-                    className="w-5 h-5 rounded flex items-center justify-center opacity-60 hover:opacity-100 transition-all cursor-pointer"
-                    style={{
-                      background: "transparent",
-                      color: "var(--text-muted)",
-                      border: "none",
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.color = "var(--accent-red)";
-                      e.currentTarget.style.background = "rgba(240, 107, 107, 0.1)";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.color = "var(--text-muted)";
-                      e.currentTarget.style.background = "transparent";
-                    }}
-                  >
-                    <Trash2 size={12} />
-                  </button>
-                </div>
+                      Test {i + 1}
+                    </Text>
+                    {hasContent && !isOpen && (
+                      <Text
+                        fontSize="2xs"
+                        fontFamily="mono"
+                        px={1.5}
+                        py={0.5}
+                        borderRadius="md"
+                        maxW="120px"
+                        truncate
+                        bg="bg.hover"
+                        color="text.muted"
+                      >
+                        {tc.input || "(empty)"}
+                      </Text>
+                    )}
+                    <HStack gap={0.5}>
+                      <IconButton
+                        aria-label="Move up"
+                        size="2xs"
+                        variant="ghost"
+                        disabled={i === 0}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          moveTestCase(i, "up");
+                        }}
+                      >
+                        <ChevronUp size={11} />
+                      </IconButton>
+                      <IconButton
+                        aria-label="Move down"
+                        size="2xs"
+                        variant="ghost"
+                        disabled={i === testCases.length - 1}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          moveTestCase(i, "down");
+                        }}
+                      >
+                        <ChevronDownIcon size={11} />
+                      </IconButton>
+                      <IconButton
+                        aria-label="Duplicate"
+                        size="2xs"
+                        variant="ghost"
+                        colorPalette="purple"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          duplicateTestCase(i);
+                        }}
+                      >
+                        <Copy size={11} />
+                      </IconButton>
+                      <IconButton
+                        aria-label="Delete"
+                        size="2xs"
+                        variant="ghost"
+                        colorPalette="red"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          removeTestCase(i);
+                        }}
+                      >
+                        <Trash2 size={11} />
+                      </IconButton>
+                    </HStack>
+                  </Flex>
 
-                {/* Accordion content */}
-                {isOpen && (
-                  <div className="p-3 space-y-3">
-                    <div>
-                      <label
-                        className="text-[10px] font-bold uppercase tracking-wider block mb-1.5"
-                        style={{ color: "var(--text-muted)" }}
-                      >
-                        Input
-                      </label>
-                      <textarea
-                        value={tc.input}
-                        onChange={(e) => updateTestCase(i, "input", e.target.value)}
-                        className="w-full h-20 p-2.5 rounded-lg text-xs font-mono resize-none outline-none"
-                        style={{
-                          background: "var(--bg-app)",
-                          color: "var(--text-primary)",
-                          border: "1px solid var(--border-subtle)",
-                        }}
-                        placeholder='e.g. [2,7,11,15] 9'
-                        spellCheck={false}
-                      />
-                    </div>
-                    <div>
-                      <label
-                        className="text-[10px] font-bold uppercase tracking-wider block mb-1.5"
-                        style={{ color: "var(--text-muted)" }}
-                      >
-                        Expected Output
-                      </label>
-                      <textarea
-                        value={tc.expectedOutput}
-                        onChange={(e) => updateTestCase(i, "expectedOutput", e.target.value)}
-                        className="w-full h-20 p-2.5 rounded-lg text-xs font-mono resize-none outline-none"
-                        style={{
-                          background: "var(--bg-app)",
-                          color: "var(--text-primary)",
-                          border: "1px solid var(--border-subtle)",
-                        }}
-                        placeholder='e.g. [0,1]'
-                        spellCheck={false}
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })
+                  {/* Accordion content */}
+                  {isOpen && (
+                    <Box p={3}>
+                      <VStack gap={3} align="stretch">
+                        <Box>
+                          <Text
+                            fontSize="2xs"
+                            fontWeight="bold"
+                            textTransform="uppercase"
+                            letterSpacing="wider"
+                            mb={1.5}
+                            color="text.muted"
+                          >
+                            Input
+                          </Text>
+                          <Textarea
+                            size="sm"
+                            value={tc.input}
+                            onChange={(e) => updateTestCase(i, "input", e.target.value)}
+                            placeholder="e.g. [2,7,11,15] 9"
+                            h={20}
+                            fontFamily="mono"
+                            resize="none"
+                          />
+                        </Box>
+                        <Box>
+                          <Text
+                            fontSize="2xs"
+                            fontWeight="bold"
+                            textTransform="uppercase"
+                            letterSpacing="wider"
+                            mb={1.5}
+                            color="text.muted"
+                          >
+                            Expected Output
+                          </Text>
+                          <Textarea
+                            size="sm"
+                            value={tc.expectedOutput}
+                            onChange={(e) =>
+                              updateTestCase(i, "expectedOutput", e.target.value)
+                            }
+                            placeholder="e.g. [0,1]"
+                            h={20}
+                            fontFamily="mono"
+                            resize="none"
+                          />
+                        </Box>
+                      </VStack>
+                    </Box>
+                  )}
+                </Box>
+              );
+            })}
+          </VStack>
         )}
-      </div>
+      </Box>
 
       {/* Footer hint */}
       {testCases.length > 0 && (
-        <div
-          className="px-4 py-3 shrink-0"
-          style={{
-            borderTop: "1px solid var(--border-subtle)",
-            background: "var(--bg-panel)",
-          }}
+        <Box
+          px={4}
+          py={3}
+          flexShrink={0}
+          borderTop="1px solid"
+          borderColor="border.subtle"
+          bg="bg.panel"
         >
-          <div className="text-[10px] leading-relaxed" style={{ color: "var(--text-muted)" }}>
+          <Text fontSize="2xs" lineHeight="relaxed" color="text.muted">
             Implement{" "}
-            <span className="font-mono font-semibold" style={{ color: "var(--accent-purple)" }}>
+            <Text as="span" fontFamily="mono" fontWeight="semibold" color="accent.purple">
               Solution.Solve(string input)
-            </span>{" "}
-            and return a value. It will be compared as a string against expected output.
-          </div>
-        </div>
+            </Text>{" "}
+            and return a value. Compared as string.
+          </Text>
+        </Box>
       )}
-    </aside>
+    </Box>
   );
 }
