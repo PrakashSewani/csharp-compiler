@@ -11,6 +11,7 @@ import {
   Keyboard,
   Copy,
   Check,
+  AlertCircle,
 } from "lucide-react";
 import {
   Box,
@@ -21,16 +22,16 @@ import {
   Badge,
   Button,
   IconButton,
-  Separator,
   Kbd,
 } from "@chakra-ui/react";
-import type { ExecutionResult } from "../api";
+import type { ExecutionResult, LintError } from "../api";
 
 interface OutputPanelProps {
   output: ExecutionResult | null;
   isRunning: boolean;
   stdin: string;
   onStdinChange: (stdin: string) => void;
+  errors: LintError[];
 }
 
 interface StatusInfo {
@@ -98,9 +99,10 @@ export function OutputPanel({
   isRunning,
   stdin,
   onStdinChange,
+  errors,
 }: OutputPanelProps) {
   const [expanded, setExpanded] = useState(true);
-  const [activeTab, setActiveTab] = useState<"output" | "stdin">("output");
+  const [activeTab, setActiveTab] = useState<"output" | "problems" | "stdin">("output");
   const [copied, setCopied] = useState(false);
 
   const status = getStatus(isRunning, output);
@@ -203,7 +205,7 @@ export function OutputPanel({
             borderBottom="1px solid"
             borderColor="border.subtle"
           >
-            {(["output", "stdin"] as const).map((tab) => (
+            {(["output", "problems", "stdin"] as const).map((tab) => (
               <Button
                 key={tab}
                 size="xs"
@@ -217,7 +219,25 @@ export function OutputPanel({
                 onClick={() => setActiveTab(tab)}
               >
                 {tab === "stdin" && <Keyboard size={12} />}
-                {tab === "output" ? "Output" : "Stdin"}
+                {tab === "problems" && <AlertCircle size={12} />}
+                {tab === "output" ? "Output" : tab === "problems" ? "Problems" : "Stdin"}
+                {tab === "problems" && errors.length > 0 && (
+                  <Badge
+                    size="xs"
+                    ml={1}
+                    colorPalette="red"
+                    variant="subtle"
+                    borderRadius="full"
+                    fontSize="2xs"
+                    minW={4}
+                    h={4}
+                    display="flex"
+                    alignItems="center"
+                    justifyContent="center"
+                  >
+                    {errors.length}
+                  </Badge>
+                )}
               </Button>
             ))}
           </HStack>
@@ -436,6 +456,62 @@ export function OutputPanel({
                       <Kbd fontSize="2xs">Ctrl</Kbd>+<Kbd fontSize="2xs">Enter</Kbd> to execute
                     </Text>
                   </Flex>
+                )}
+              </Box>
+            ) : activeTab === "problems" ? (
+              <Box p={4}>
+                {errors.length === 0 ? (
+                  <Flex flexDirection="column" alignItems="center" justifyContent="center" py={8}>
+                    <Box mb={2}>
+                      <CheckCircle2 size={24} color="#22c55e" style={{ opacity: 0.3 }} />
+                    </Box>
+                    <Text fontSize="xs" color="text.muted">
+                      No problems detected
+                    </Text>
+                    <Text fontSize="2xs" color="text.muted" mt={1}>
+                      Run your code to check for compilation errors
+                    </Text>
+                  </Flex>
+                ) : (
+                  <VStack gap={1} align="stretch">
+                    {errors.map((err, i) => (
+                      <Flex
+                        key={i}
+                        fontSize="xs"
+                        fontFamily="mono"
+                        p={2}
+                        px={3}
+                        borderRadius="md"
+                        alignItems="center"
+                        gap={3}
+                        cursor="pointer"
+                        bg="bg.surface"
+                        border="1px solid"
+                        borderColor="border.subtle"
+                        _hover={{
+                          bg: "bg.hover",
+                          borderColor: "border.default",
+                        }}
+                        onClick={() => {
+                          window.dispatchEvent(
+                            new CustomEvent("navigate-to-line", { detail: { line: err.line } })
+                          );
+                        }}
+                      >
+                        {err.severity === "error" ? (
+                          <XCircle size={13} color="#ef4444" style={{ flexShrink: 0 }} />
+                        ) : (
+                          <AlertTriangle size={13} color="#facc15" style={{ flexShrink: 0 }} />
+                        )}
+                        <Text fontSize="2xs" color="text.muted" whiteSpace="nowrap">
+                          [{err.line}:{err.column}]
+                        </Text>
+                        <Text fontSize="xs" color="text.primary" flex={1} truncate>
+                          {err.message}
+                        </Text>
+                      </Flex>
+                    ))}
+                  </VStack>
                 )}
               </Box>
             ) : (

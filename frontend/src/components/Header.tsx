@@ -171,7 +171,7 @@ export function Header({
             </Button>
 
             {queuedFileName && (
-              <HStack gap={1} px={4} py={2} borderRadius="md" bg="accent.green/10">
+              <HStack gap={1} px={4} py={2.5} borderRadius="md" bg="accent.green/10">
                 <Play size={10} fill="#22c55e" color="#22c55e" />
                 <Text fontSize="2xs" color="accent.green" fontWeight="medium">
                   {queuedFileName}.cs

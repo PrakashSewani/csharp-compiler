@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { Group, Panel, Separator } from "react-resizable-panels";
 import { FileExplorer } from "./components/FileExplorer";
 import { Editor } from "./components/Editor";
@@ -29,6 +29,7 @@ export default function App() {
   const [output, setOutput] = useState<ExecutionResult | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [executionErrors, setExecutionErrors] = useState<LintError[]>([]);
   const [lintErrors, setLintErrors] = useState<LintError[]>([]);
   const [showTestCases, setShowTestCases] = useState(false);
   const [showSidebar, setShowSidebar] = useState(true);
@@ -42,6 +43,11 @@ export default function App() {
 
   const currentFileKey = currentSolution && currentFile ? `${currentSolution}/${currentFile}` : null;
   const currentStdin = currentFileKey ? (stdinMap[currentFileKey] || "") : "";
+
+  const errors = useMemo(
+    () => (executionErrors.length > 0 ? executionErrors : lintErrors),
+    [executionErrors, lintErrors]
+  );
 
   const handleStdinChange = useCallback((value: string) => {
     if (currentFileKey) {
@@ -66,6 +72,7 @@ export default function App() {
     setCode(entry.code);
     setTestCases(entry.testCases || []);
     setOutput(null);
+    setExecutionErrors([]);
     setLintErrors([]);
   }, []);
 
@@ -113,6 +120,7 @@ public class Solution
   const handleCodeChange = useCallback(
     (newCode: string) => {
       setCode(newCode);
+      setExecutionErrors([]);
 
       if (currentSolution && currentFile) {
         clearTimeout(saveTimer.current);
@@ -160,6 +168,7 @@ public class Solution
 
     setIsRunning(true);
     setOutput(null);
+    setExecutionErrors([]);
 
     try {
       await api.saveFile(solution, file, entry.code, entry.testCases);
@@ -170,14 +179,17 @@ public class Solution
         fileStdin || undefined
       );
       setOutput(result);
+      setExecutionErrors(result.compileErrorsList || []);
     } catch (e: any) {
       setOutput({
         stdout: "",
         stderr: e.message,
         exitCode: 1,
         compileErrors: "",
+        compileErrorsList: [],
         timedOut: false,
       });
+      setExecutionErrors([]);
     } finally {
       setIsRunning(false);
     }
@@ -201,6 +213,8 @@ public class Solution
         setCode("");
         setTestCases([]);
         setOutput(null);
+        setExecutionErrors([]);
+        setLintErrors([]);
         setQueuedFile(null);
       }
       if (queuedFile && queuedFile.startsWith(`${name}/`)) {
@@ -219,6 +233,7 @@ public class Solution
         setCode("");
         setTestCases([]);
         setOutput(null);
+        setExecutionErrors([]);
       }
       if (queuedFile === `${solution}/${file}`) {
         setQueuedFile(null);
@@ -351,7 +366,7 @@ public class Solution
                     <Editor
                       code={code}
                       onChange={handleCodeChange}
-                      errors={lintErrors}
+                      errors={errors}
                     />
                   ) : (
                     <Flex
@@ -399,6 +414,7 @@ public class Solution
                 isRunning={isRunning}
                 stdin={currentStdin}
                 onStdinChange={handleStdinChange}
+                errors={errors}
               />
             </Panel>
           </Group>
@@ -424,7 +440,7 @@ public class Solution
       <StatusBar
         currentFile={currentFile}
         isSaving={isSaving}
-        lintErrorCount={lintErrors.length}
+        errorCount={errors.length}
       />
 
       <NewSolutionModal

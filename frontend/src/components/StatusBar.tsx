@@ -3,10 +3,10 @@ import { Flex, Text } from "@chakra-ui/react";
 interface StatusBarProps {
   currentFile: string | null;
   isSaving: boolean;
-  lintErrorCount: number;
+  errorCount: number;
 }
 
-export function StatusBar({ currentFile, isSaving, lintErrorCount }: StatusBarProps) {
+export function StatusBar({ currentFile, isSaving, errorCount }: StatusBarProps) {
   return (
     <Flex
       alignItems="center"
@@ -41,9 +41,9 @@ export function StatusBar({ currentFile, isSaving, lintErrorCount }: StatusBarPr
             Saving...
           </Text>
         )}
-        {lintErrorCount > 0 && (
+        {errorCount > 0 && (
           <Text fontSize="2xs" color="accent.red">
-            {lintErrorCount} problem{lintErrorCount !== 1 ? "s" : ""}
+            {errorCount} problem{errorCount !== 1 ? "s" : ""}
           </Text>
         )}
         <Text fontSize="2xs" color="text.muted">

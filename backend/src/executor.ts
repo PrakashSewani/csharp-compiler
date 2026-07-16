@@ -19,6 +19,7 @@ interface ExecutionResult {
   stderr: string;
   exitCode: number;
   compileErrors: string;
+  compileErrorsList: { line: number; column: number; message: string; severity: "error" | "warning" }[];
   testResults?: {
     passed: number;
     total: number;
@@ -214,6 +215,7 @@ export async function executeCode(
       stderr: hasBuildError ? buildOutput : "",
       exitCode,
       compileErrors: hasBuildError ? buildOutput : "",
+      compileErrorsList: hasBuildError ? parseBuildErrors(buildOutput) : [],
       timedOut,
       testResults:
         testCases && testCases.length > 0

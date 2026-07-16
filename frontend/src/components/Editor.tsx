@@ -14,6 +14,8 @@ export function Editor({ code, onChange, errors }: EditorProps) {
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   const monacoRef = useRef<any>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const decorationCollectionRef = useRef<editor.IEditorDecorationsCollection | null>(null);
+  const hoverProviderRef = useRef<any>(null);
 
   const handleMount: OnMount = (editor, monaco) => {
     editorRef.current = editor;
@@ -26,6 +28,23 @@ export function Editor({ code, onChange, errors }: EditorProps) {
 
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
       window.dispatchEvent(new CustomEvent("run-code"));
+    });
+
+    hoverProviderRef.current = monaco.languages.registerHoverProvider("csharp", {
+      provideHover(model, position) {
+        const lineNumber = position.lineNumber;
+        const lineErrors = errors.filter((e) => e.line === lineNumber);
+        if (lineErrors.length === 0) return null;
+
+        const contents = lineErrors.map((err) => ({
+          value: `**${err.severity === "error" ? "Error" : "Warning"}**: ${err.message}`,
+        }));
+
+        return {
+          range: new monaco.Range(lineNumber, 1, lineNumber, model.getLineMaxColumn(lineNumber)),
+          contents,
+        };
+      },
     });
 
     editor.focus();
@@ -57,7 +76,44 @@ export function Editor({ code, onChange, errors }: EditorProps) {
     }));
 
     monaco.editor.setModelMarkers(model, "csharp-lint", markers);
+
+    const decorations = errors.map((err) => ({
+      range: new monaco.Range(err.line, 1, err.line, model.getLineMaxColumn(err.line)),
+      options: {
+        after: {
+          content: `  \u2716 ${err.message}`,
+          inlineClassName: err.severity === "error" ? "inline-error-decoration" : "inline-warning-decoration",
+        },
+        isWholeLine: true,
+        className: err.severity === "error" ? "error-line-decoration" : "warning-line-decoration",
+      },
+    }));
+
+    decorationCollectionRef.current?.clear();
+    decorationCollectionRef.current = editor.createDecorationsCollection(decorations);
   }, [errors]);
+
+  useEffect(() => {
+    const handleNavigate = (e: CustomEvent) => {
+      const editor = editorRef.current;
+      if (!editor) return;
+      const { line } = e.detail;
+      if (typeof line === "number") {
+        editor.revealLineInCenter(line);
+        editor.setPosition({ lineNumber: line, column: 1 });
+        editor.focus();
+      }
+    };
+
+    window.addEventListener("navigate-to-line", handleNavigate as EventListener);
+    return () => window.removeEventListener("navigate-to-line", handleNavigate as EventListener);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      hoverProviderRef.current?.dispose();
+    };
+  }, []);
 
   return (
     <div className="h-full w-full relative" style={{ background: "#070a0e" }}>
@@ -86,6 +142,26 @@ export function Editor({ code, onChange, errors }: EditorProps) {
         onMount={handleMount}
         options={EDITOR_OPTIONS}
       />
+      <style>{`
+        .inline-error-decoration {
+          color: #ef4444 !important;
+          font-size: 11px !important;
+          font-style: italic !important;
+          margin-left: 16px !important;
+        }
+        .inline-warning-decoration {
+          color: #facc15 !important;
+          font-size: 11px !important;
+          font-style: italic !important;
+          margin-left: 16px !important;
+        }
+        .error-line-decoration {
+          background: rgba(239, 68, 68, 0.06) !important;
+        }
+        .warning-line-decoration {
+          background: rgba(250, 204, 21, 0.06) !important;
+        }
+      `}</style>
     </div>
   );
 }

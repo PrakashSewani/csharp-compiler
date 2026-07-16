@@ -36,6 +36,7 @@ export interface ExecutionResult {
   stderr: string;
   exitCode: number;
   compileErrors: string;
+  compileErrorsList: LintError[];
   testResults?: {
     passed: number;
     total: number;
