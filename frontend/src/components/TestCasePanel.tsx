@@ -79,6 +79,7 @@ export function TestCasePanel({ testCases, onChange, onRunAll }: TestCasePanelPr
       flexDirection="column"
       overflow="hidden"
       bg="bg.panel"
+      animation="panel-slide-in-right 200ms ease-out"
     >
       {/* Header */}
       <Flex

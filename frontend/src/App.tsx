@@ -121,6 +121,7 @@ public class Solution
     (newCode: string) => {
       setCode(newCode);
       setExecutionErrors([]);
+      setLintErrors([]);
 
       if (currentSolution && currentFile) {
         clearTimeout(saveTimer.current);

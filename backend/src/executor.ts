@@ -285,11 +285,16 @@ function demuxDockerLogs(buf: Buffer): string {
 function parseBuildErrors(
   output: string
 ): { line: number; column: number; message: string; severity: "error" | "warning" }[] {
+  const seen = new Set<string>();
   const errors: { line: number; column: number; message: string; severity: "error" | "warning" }[] = [];
   const regex = /Program\.cs\((\d+),(\d+)\):\s+(error|warning)\s+(\w+):\s+(.+)/g;
   let match;
 
   while ((match = regex.exec(output)) !== null) {
+    const key = `${match[1]}:${match[2]}:${match[3]}:${match[4]}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+
     errors.push({
       line: parseInt(match[1]),
       column: parseInt(match[2]),

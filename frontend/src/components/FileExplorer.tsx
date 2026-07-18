@@ -88,7 +88,14 @@ export function FileExplorer({
   const totalFiles = solutions.reduce((sum, s) => sum + s.files.length, 0);
 
   return (
-    <Box h="100%" display="flex" flexDirection="column" overflow="hidden" bg="bg.panel">
+    <Box
+      h="100%"
+      display="flex"
+      flexDirection="column"
+      overflow="hidden"
+      bg="bg.panel"
+      animation="panel-slide-in-left 200ms ease-out"
+    >
       {/* Header */}
       <Flex
         alignItems="center"

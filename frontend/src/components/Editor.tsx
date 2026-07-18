@@ -14,9 +14,6 @@ export function Editor({ code, onChange, errors }: EditorProps) {
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   const monacoRef = useRef<any>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const decorationCollectionRef = useRef<editor.IEditorDecorationsCollection | null>(null);
-  const hoverProviderRef = useRef<any>(null);
-
   const handleMount: OnMount = (editor, monaco) => {
     editorRef.current = editor;
     monacoRef.current = monaco;
@@ -28,23 +25,6 @@ export function Editor({ code, onChange, errors }: EditorProps) {
 
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
       window.dispatchEvent(new CustomEvent("run-code"));
-    });
-
-    hoverProviderRef.current = monaco.languages.registerHoverProvider("csharp", {
-      provideHover(model, position) {
-        const lineNumber = position.lineNumber;
-        const lineErrors = errors.filter((e) => e.line === lineNumber);
-        if (lineErrors.length === 0) return null;
-
-        const contents = lineErrors.map((err) => ({
-          value: `**${err.severity === "error" ? "Error" : "Warning"}**: ${err.message}`,
-        }));
-
-        return {
-          range: new monaco.Range(lineNumber, 1, lineNumber, model.getLineMaxColumn(lineNumber)),
-          contents,
-        };
-      },
     });
 
     editor.focus();
@@ -63,34 +43,29 @@ export function Editor({ code, onChange, errors }: EditorProps) {
     const model = editor.getModel();
     if (!model) return;
 
-    const markers = errors.map((err) => ({
-      severity:
-        err.severity === "error"
-          ? monaco.MarkerSeverity.Error
-          : monaco.MarkerSeverity.Warning,
-      message: err.message,
-      startLineNumber: err.line,
-      startColumn: err.column,
-      endLineNumber: err.line,
-      endColumn: err.column + 10,
-    }));
+    const lineCount = model.getLineCount();
 
-    monaco.editor.setModelMarkers(model, "csharp-lint", markers);
+    try {
+      const validErrors = errors.filter(
+        (err) => err.line >= 1 && err.line <= lineCount
+      );
 
-    const decorations = errors.map((err) => ({
-      range: new monaco.Range(err.line, 1, err.line, model.getLineMaxColumn(err.line)),
-      options: {
-        after: {
-          content: `  \u2716 ${err.message}`,
-          inlineClassName: err.severity === "error" ? "inline-error-decoration" : "inline-warning-decoration",
-        },
-        isWholeLine: true,
-        className: err.severity === "error" ? "error-line-decoration" : "warning-line-decoration",
-      },
-    }));
+      const markers = validErrors.map((err) => ({
+        severity:
+          err.severity === "error"
+            ? monaco.MarkerSeverity.Error
+            : monaco.MarkerSeverity.Warning,
+        message: err.message,
+        startLineNumber: err.line,
+        startColumn: Math.min(err.column, model.getLineMaxColumn(err.line)),
+        endLineNumber: err.line,
+        endColumn: Math.min(err.column + 10, model.getLineMaxColumn(err.line)),
+      }));
 
-    decorationCollectionRef.current?.clear();
-    decorationCollectionRef.current = editor.createDecorationsCollection(decorations);
+      monaco.editor.setModelMarkers(model, "csharp-lint", markers);
+    } catch {
+      monaco.editor.setModelMarkers(model, "csharp-lint", []);
+    }
   }, [errors]);
 
   useEffect(() => {
@@ -107,12 +82,6 @@ export function Editor({ code, onChange, errors }: EditorProps) {
 
     window.addEventListener("navigate-to-line", handleNavigate as EventListener);
     return () => window.removeEventListener("navigate-to-line", handleNavigate as EventListener);
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      hoverProviderRef.current?.dispose();
-    };
   }, []);
 
   return (
@@ -142,26 +111,7 @@ export function Editor({ code, onChange, errors }: EditorProps) {
         onMount={handleMount}
         options={EDITOR_OPTIONS}
       />
-      <style>{`
-        .inline-error-decoration {
-          color: #ef4444 !important;
-          font-size: 11px !important;
-          font-style: italic !important;
-          margin-left: 16px !important;
-        }
-        .inline-warning-decoration {
-          color: #facc15 !important;
-          font-size: 11px !important;
-          font-style: italic !important;
-          margin-left: 16px !important;
-        }
-        .error-line-decoration {
-          background: rgba(239, 68, 68, 0.06) !important;
-        }
-        .warning-line-decoration {
-          background: rgba(250, 204, 21, 0.06) !important;
-        }
-      `}</style>
+
     </div>
   );
 }
