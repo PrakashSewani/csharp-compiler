@@ -7,13 +7,12 @@ import { TestCasePanel } from "./components/TestCasePanel";
 import { Header } from "./components/Header";
 import { StatusBar } from "./components/StatusBar";
 import { CommandPalette } from "./components/CommandPalette";
+import { NewSolutionModal, NewFileModal } from "./components/Modals";
 import {
   Box,
   Flex,
   HStack,
   Text,
-  Button,
-  Input,
   Kbd,
 } from "@chakra-ui/react";
 import * as api from "./api";
@@ -304,7 +303,7 @@ public class Solution
         onToggleSidebar={() => setShowSidebar(!showSidebar)}
       />
 
-      <Group orientation="horizontal" className="flex-1 overflow-hidden">
+      <Group orientation="horizontal" style={{ flex: 1, overflow: "hidden" }}>
         {showSidebar && (
           <>
             <Panel defaultSize="20%" minSize="15%" maxSize="35%">
@@ -321,8 +320,8 @@ public class Solution
               />
             </Panel>
             <Separator
-              className="resize-handle w-[3px]"
-              style={{ background: "#182030" }}
+              className="resize-handle"
+              style={{ background: "#182030", width: 3 }}
             />
           </>
         )}
@@ -405,8 +404,8 @@ public class Solution
             </Panel>
 
             <Separator
-              className="resize-handle h-[3px]"
-              style={{ background: "#182030" }}
+              className="resize-handle"
+              style={{ background: "#182030", width: 3 }}
             />
 
             <Panel defaultSize="30%" minSize="15%" maxSize="60%">
@@ -424,8 +423,8 @@ public class Solution
         {showTestCases && (
           <>
             <Separator
-              className="resize-handle w-[3px]"
-              style={{ background: "#182030" }}
+              className="resize-handle"
+              style={{ background: "#182030", width: 3 }}
             />
             <Panel defaultSize="25%" minSize="15%" maxSize="40%">
               <TestCasePanel
@@ -474,213 +473,6 @@ public class Solution
         onToggleSidebar={() => setShowSidebar((s) => !s)}
         onSave={handleSave}
       />
-    </Box>
-  );
-}
-
-function NewSolutionModal({
-  open,
-  onClose,
-  onSubmit,
-}: {
-  open: boolean;
-  onClose: () => void;
-  onSubmit: (name: string) => void;
-}) {
-  const [name, setName] = useState("");
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (open) {
-      setName("");
-      setTimeout(() => inputRef.current?.focus(), 50);
-    }
-  }, [open]);
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    onSubmit(name);
-  };
-
-  if (!open) return null;
-
-  return (
-    <Box
-      position="fixed"
-      inset={0}
-      zIndex={50}
-      display="flex"
-      alignItems="center"
-      justifyContent="center"
-      p={4}
-      bg="black/50"
-      onClick={(e: React.MouseEvent<HTMLDivElement>) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <Box
-        w="full"
-        maxW="sm"
-        borderRadius="xl"
-        p={6}
-        bg="bg.elevated"
-        border="1px solid"
-        borderColor="border.default"
-        boxShadow="lg"
-      >
-        <Text fontSize="sm" fontWeight="bold" mb={4} color="text.primary">
-          New Solution
-        </Text>
-        <form onSubmit={handleSubmit}>
-          <Text
-            fontSize="2xs"
-            fontWeight="bold"
-            textTransform="uppercase"
-            letterSpacing="wider"
-            display="block"
-            mb={1.5}
-            color="text.muted"
-          >
-            Solution Name
-          </Text>
-          <Input
-            ref={inputRef}
-            type="text"
-            value={name}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setName(e.target.value)}
-            placeholder="e.g. LeetCodeProblems, GraphAlgorithms"
-            fontFamily="mono"
-            size="sm"
-            px={2}
-          />
-          <Flex justify="flex-end" gap={2} mt={5}>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={onClose}
-              px={4}
-            >
-              Cancel
-            </Button>
-            <Button
-              size="sm"
-              type="submit"
-              colorPalette="green"
-              disabled={!name.trim()}
-              px={4}
-            >
-              Create
-            </Button>
-          </Flex>
-        </form>
-      </Box>
-    </Box>
-  );
-}
-
-function NewFileModal({
-  open,
-  onClose,
-  onSubmit,
-  solutionName,
-}: {
-  open: boolean;
-  onClose: () => void;
-  onSubmit: (name: string) => void;
-  solutionName: string | null;
-}) {
-  const [name, setName] = useState("");
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (open) {
-      setName("");
-      setTimeout(() => inputRef.current?.focus(), 50);
-    }
-  }, [open]);
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    onSubmit(name);
-  };
-
-  if (!open) return null;
-
-  return (
-    <Box
-      position="fixed"
-      inset={0}
-      zIndex={50}
-      display="flex"
-      alignItems="center"
-      justifyContent="center"
-      p={4}
-      bg="black/50"
-      onClick={(e: React.MouseEvent<HTMLDivElement>) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <Box
-        w="full"
-        maxW="sm"
-        borderRadius="xl"
-        p={6}
-        bg="bg.elevated"
-        border="1px solid"
-        borderColor="border.default"
-        boxShadow="lg"
-      >
-        <Text fontSize="sm" fontWeight="bold" mb={1} color="text.primary">
-          New File
-        </Text>
-        {solutionName && (
-          <Text fontSize="xs" color="text.muted" mb={4}>
-            in {solutionName}
-          </Text>
-        )}
-        <form onSubmit={handleSubmit}>
-          <Text
-            fontSize="2xs"
-            fontWeight="bold"
-            textTransform="uppercase"
-            letterSpacing="wider"
-            display="block"
-            mb={1.5}
-            color="text.muted"
-          >
-            Class Name
-          </Text>
-          <Input
-            ref={inputRef}
-            type="text"
-            value={name}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setName(e.target.value)}
-            placeholder="e.g. TwoSum, MergeSort"
-            fontFamily="mono"
-            size="sm"
-            px={2}
-          />
-          <Flex justify="flex-end" gap={2} mt={5}>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={onClose}
-              px={4}
-            >
-              Cancel
-            </Button>
-            <Button
-              size="sm"
-              type="submit"
-              colorPalette="green"
-              disabled={!name.trim()}
-              px={4}
-            >
-              Create
-            </Button>
-          </Flex>
-        </form>
-      </Box>
     </Box>
   );
 }

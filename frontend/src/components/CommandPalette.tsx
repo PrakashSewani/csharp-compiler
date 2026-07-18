@@ -10,8 +10,11 @@ import {
   Save,
   FolderPlus,
   Folder,
+  Sun,
+  Moon,
 } from "lucide-react";
 import { Box, Flex, HStack, Text, Kbd } from "@chakra-ui/react";
+import { useTheme } from "next-themes";
 import type { SolutionFolder } from "../api";
 
 interface Command {
@@ -54,12 +57,14 @@ export function CommandPalette({
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const { theme, setTheme } = useTheme();
 
   const commands: Command[] = [
     { id: "run", label: "Run Code", icon: <Play size={14} />, shortcut: "Ctrl+Enter", action: () => { onRun(); onClose(); } },
     { id: "new-solution", label: "New Solution", icon: <FolderPlus size={14} />, shortcut: "Ctrl+N", action: () => { onNewSolution(); onClose(); } },
     { id: "new-file", label: "New File", icon: <Plus size={14} />, action: () => { onNewFile(); onClose(); } },
     { id: "save", label: "Save File", icon: <Save size={14} />, shortcut: "Ctrl+S", action: () => { onSave(); onClose(); } },
+    { id: "toggle-theme", label: "Toggle Theme", icon: theme === "dark" ? <Sun size={14} /> : <Moon size={14} />, action: () => { setTheme(theme === "dark" ? "light" : "dark"); onClose(); } },
     { id: "toggle-tests", label: "Toggle Test Panel", icon: <FlaskConical size={14} />, shortcut: "Ctrl+Shift+T", action: () => { onToggleTests(); onClose(); } },
     { id: "toggle-sidebar", label: "Toggle Sidebar", icon: <PanelLeft size={14} />, shortcut: "Ctrl+B", action: () => { onToggleSidebar(); onClose(); } },
   ];
@@ -117,7 +122,7 @@ export function CommandPalette({
 
   return (
     <Transition appear show={open} as={Fragment}>
-      <Dialog as="div" className="relative z-50" onClose={onClose}>
+      <Dialog as="div" style={{ position: "relative", zIndex: 50 }} onClose={onClose}>
         <TransitionChild
           as={Fragment}
           enter="ease-out duration-150"
@@ -127,11 +132,11 @@ export function CommandPalette({
           leaveFrom="opacity-100"
           leaveTo="opacity-0"
         >
-          <div className="fixed inset-0 bg-black/40" />
+          <Box position="fixed" inset={0} bg="black/40" />
         </TransitionChild>
 
-        <div className="fixed inset-0 overflow-y-auto">
-          <div className="flex min-h-full items-start justify-center pt-[15vh] px-4">
+        <Box position="fixed" inset={0} overflowY="auto">
+          <Flex minH="100%" alignItems="flex-start" justifyContent="center" pt="15vh" px={4}>
             <TransitionChild
               as={Fragment}
               enter="ease-out duration-150"
@@ -141,14 +146,18 @@ export function CommandPalette({
               leaveFrom="opacity-100 scale-100"
               leaveTo="opacity-0 scale-95"
             >
-              <DialogPanel
-                className="w-full max-w-lg rounded-xl overflow-hidden"
-                style={{
-                  background: "#131924",
-                  border: "1px solid #1f2937",
-                  boxShadow: "0 10px 15px -3px rgba(0,0,0,0.6), 0 4px 6px -4px rgba(0,0,0,0.5)",
-                }}
-              >
+              <DialogPanel>
+                <Box
+                  w="full"
+                  maxW="lg"
+                  borderRadius="xl"
+                  overflow="hidden"
+                  style={{
+                    background: "#131924",
+                    border: "1px solid #1f2937",
+                    boxShadow: "0 10px 15px -3px rgba(0,0,0,0.6), 0 4px 6px -4px rgba(0,0,0,0.5)",
+                  }}
+                >
                 {/* Search input */}
                 <Flex
                   alignItems="center"
@@ -166,8 +175,13 @@ export function CommandPalette({
                     onChange={(e) => setQuery(e.target.value)}
                     onKeyDown={handleKeyDown}
                     placeholder="Type a command or search files..."
-                    className="flex-1 bg-transparent text-sm outline-none"
-                    style={{ color: "#f0f4f8" }}
+                    style={{
+                      flex: 1,
+                      background: "transparent",
+                      fontSize: "14px",
+                      outline: "none",
+                      color: "#f0f4f8",
+                    }}
                   />
                   <Kbd fontSize="2xs">ESC</Kbd>
                 </Flex>
@@ -204,10 +218,11 @@ export function CommandPalette({
                     ))
                   )}
                 </Box>
+                </Box>
               </DialogPanel>
             </TransitionChild>
-          </div>
-        </div>
+          </Flex>
+        </Box>
       </Dialog>
     </Transition>
   );

@@ -225,10 +225,15 @@ export async function migrateFlatFiles(): Promise<void> {
   const entries = await fs.readdir(FILES_DIR, { withFileTypes: true });
   const dirs = entries.filter((e) => e.isDirectory() && !e.name.startsWith("."));
 
-  const needsMigration = dirs.some((dir) => {
+  let needsMigration = false;
+  for (const dir of dirs) {
     const mainCs = path.join(FILES_DIR, dir.name, "Main.cs");
-    return require("fs").existsSync(mainCs);
-  });
+    try {
+      await fs.access(mainCs);
+      needsMigration = true;
+      break;
+    } catch {}
+  }
 
   if (!needsMigration) return;
 
@@ -322,24 +327,4 @@ async function updateSlnFile(solutionName: string): Promise<void> {
   } catch {}
 }
 
-// Keep backward compatibility for flat file listing (used by migration check)
-export async function listFiles(): Promise<{ name: string; updatedAt: string }[]> {
-  await ensureDir();
-  const entries = await fs.readdir(FILES_DIR, { withFileTypes: true });
-  const dirs = entries.filter((e) => e.isDirectory() && !e.name.startsWith("."));
-  const results: { name: string; updatedAt: string }[] = [];
 
-  for (const dir of dirs) {
-    try {
-      const metaPath = path.join(FILES_DIR, dir.name, "meta.json");
-      const meta = JSON.parse(await fs.readFile(metaPath, "utf-8"));
-      results.push({ name: dir.name, updatedAt: meta.updatedAt });
-    } catch {
-      results.push({ name: dir.name, updatedAt: "" });
-    }
-  }
-
-  return results.sort(
-    (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-  );
-}

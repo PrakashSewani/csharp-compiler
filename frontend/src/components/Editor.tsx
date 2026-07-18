@@ -1,6 +1,7 @@
 import { useRef, useEffect, useState } from "react";
 import MonacoEditor, { OnMount, OnChange } from "@monaco-editor/react";
 import type { editor } from "monaco-editor";
+import { Box, Flex, Text } from "@chakra-ui/react";
 import type { LintError } from "../api";
 import { CSHARP_THEME, EDITOR_OPTIONS } from "../monacoConfig";
 
@@ -85,22 +86,31 @@ export function Editor({ code, onChange, errors }: EditorProps) {
   }, []);
 
   return (
-    <div className="h-full w-full relative" style={{ background: "#070a0e" }}>
+    <Box h="100%" w="100%" position="relative" style={{ background: "#070a0e" }}>
       {isLoading && (
-        <div
-          className="absolute inset-0 flex items-center justify-center z-10"
+        <Box
+          position="absolute"
+          inset={0}
+          display="flex"
+          alignItems="center"
+          justifyContent="center"
+          zIndex={10}
           style={{ background: "#070a0e" }}
         >
-          <div className="flex items-center gap-2">
-            <div
-              className="w-4 h-4 border-2 rounded-full animate-spin"
+          <Flex alignItems="center" gap={2}>
+            <Box
+              w={4}
+              h={4}
+              borderRadius="full"
+              border="2px solid"
+              className="animate-spin"
               style={{ borderColor: "#1f2937", borderTopColor: "#3b82f6" }}
             />
-            <span className="text-xs" style={{ color: "#546478" }}>
+            <Text fontSize="xs" style={{ color: "#546478" }}>
               Loading editor...
-            </span>
-          </div>
-        </div>
+            </Text>
+          </Flex>
+        </Box>
       )}
       <MonacoEditor
         height="100%"
@@ -112,6 +122,6 @@ export function Editor({ code, onChange, errors }: EditorProps) {
         options={EDITOR_OPTIONS}
       />
 
-    </div>
+    </Box>
   );
 }

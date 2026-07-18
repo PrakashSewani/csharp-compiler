@@ -1,5 +1,6 @@
-import { Play, Plus, FlaskConical, Code2, PanelLeft, FolderPlus } from "lucide-react";
+import { Play, Plus, FlaskConical, Code2, PanelLeft, FolderPlus, Sun, Moon } from "lucide-react";
 import { Box, Flex, HStack, Button, IconButton, Badge, Text, Kbd } from "@chakra-ui/react";
+import { useTheme } from "next-themes";
 
 interface HeaderProps {
   currentSolution: string | null;
@@ -31,6 +32,7 @@ export function Header({
   onToggleSidebar,
 }: HeaderProps) {
   const queuedFileName = queuedFile ? queuedFile.split("/")[1] : null;
+  const { theme, setTheme } = useTheme();
 
   return (
     <Box
@@ -157,6 +159,17 @@ export function Header({
 
       {/* Right: Actions */}
       <HStack gap={2.5}>
+        <IconButton
+          aria-label="Toggle theme"
+          size="sm"
+          variant="ghost"
+          onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+        >
+          {theme === "dark" ? <Sun size={14} /> : <Moon size={14} />}
+        </IconButton>
+
+        <Box w="px" h={5} bg="border.default" />
+
         {currentSolution && currentFile && (
           <>
             <Button

@@ -1,5 +1,14 @@
 const API_BASE = "/api";
 
+async function request<T>(url: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(url, init);
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(body || `Request failed: ${res.status}`);
+  }
+  return res.json();
+}
+
 export interface TestCase {
   input: string;
   expectedOutput: string;
@@ -48,12 +57,11 @@ export interface ExecutionResult {
 // --- Solution/Folder API ---
 
 export async function listSolutions(): Promise<SolutionFolder[]> {
-  const res = await fetch(`${API_BASE}/solutions`);
-  return res.json();
+  return request<SolutionFolder[]>(`${API_BASE}/solutions`);
 }
 
 export async function createSolution(name: string): Promise<void> {
-  await fetch(`${API_BASE}/solutions`, {
+  await request<void>(`${API_BASE}/solutions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name }),
@@ -61,13 +69,13 @@ export async function createSolution(name: string): Promise<void> {
 }
 
 export async function deleteSolution(name: string): Promise<void> {
-  await fetch(`${API_BASE}/solutions/${encodeURIComponent(name)}`, {
+  await request<void>(`${API_BASE}/solutions/${encodeURIComponent(name)}`, {
     method: "DELETE",
   });
 }
 
 export async function renameSolution(name: string, newName: string): Promise<void> {
-  await fetch(`${API_BASE}/solutions/${encodeURIComponent(name)}`, {
+  await request<void>(`${API_BASE}/solutions/${encodeURIComponent(name)}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ newName }),
@@ -77,15 +85,15 @@ export async function renameSolution(name: string, newName: string): Promise<voi
 // --- File API (within solutions) ---
 
 export async function listFilesInSolution(solution: string): Promise<FileListItem[]> {
-  const res = await fetch(`${API_BASE}/solutions/${encodeURIComponent(solution)}/files`);
-  return res.json();
+  return request<FileListItem[]>(
+    `${API_BASE}/solutions/${encodeURIComponent(solution)}/files`
+  );
 }
 
 export async function getFile(solution: string, file: string): Promise<FileEntry> {
-  const res = await fetch(
+  return request<FileEntry>(
     `${API_BASE}/solutions/${encodeURIComponent(solution)}/files/${encodeURIComponent(file)}`
   );
-  return res.json();
 }
 
 export async function saveFile(
@@ -94,7 +102,7 @@ export async function saveFile(
   code: string,
   testCases: TestCase[] = []
 ): Promise<void> {
-  await fetch(
+  await request<void>(
     `${API_BASE}/solutions/${encodeURIComponent(solution)}/files/${encodeURIComponent(file)}`,
     {
       method: "POST",
@@ -105,7 +113,7 @@ export async function saveFile(
 }
 
 export async function deleteFile(solution: string, file: string): Promise<void> {
-  await fetch(
+  await request<void>(
     `${API_BASE}/solutions/${encodeURIComponent(solution)}/files/${encodeURIComponent(file)}`,
     {
       method: "DELETE",
@@ -120,21 +128,22 @@ export async function executeCode(
   testCases?: TestCase[],
   stdin?: string
 ): Promise<ExecutionResult> {
-  const res = await fetch(`${API_BASE}/execute`, {
+  return request<ExecutionResult>(`${API_BASE}/execute`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ code, testCases, stdin }),
   });
-  return res.json();
 }
 
 export async function lintCode(
   code: string
 ): Promise<{ errors: LintError[]; stdout: string; stderr: string }> {
-  const res = await fetch(`${API_BASE}/lint`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ code }),
-  });
-  return res.json();
+  return request<{ errors: LintError[]; stdout: string; stderr: string }>(
+    `${API_BASE}/lint`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code }),
+    }
+  );
 }

@@ -13,18 +13,31 @@ services:
       - SANDBOX_IMAGE=csharp-sandbox
     depends_on:
       sandbox:
-        condition: service_started
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3001/api/solutions"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
 
   sandbox:
     build: ./sandbox
     image: csharp-sandbox
+    command: "tail -f /dev/null"
+    healthcheck:
+      test: ["CMD", "dotnet", "--version"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   frontend:
     build: ./frontend
     ports:
       - "3000:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
 
 volumes:
   csharp-exec-workspace:

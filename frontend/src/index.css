@@ -1,6 +1,4 @@
-@import "tailwindcss";
-
-@theme {
+:root {
   --font-sans: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
   --font-mono: "JetBrains Mono", "Fira Code", "Consolas", monospace;
 }
@@ -12,6 +10,7 @@
 }
 
 body {
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
