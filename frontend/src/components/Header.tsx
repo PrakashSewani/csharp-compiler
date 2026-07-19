@@ -1,4 +1,4 @@
-import { Play, Plus, FlaskConical, Code2, PanelLeft, FolderPlus, Sun, Moon } from "lucide-react";
+import { Play, Plus, FlaskConical, Code2, PanelLeft, FolderPlus, Sun, Moon, Settings } from "lucide-react";
 import { Box, Flex, HStack, Button, IconButton, Badge, Text, Kbd } from "@chakra-ui/react";
 import { useTheme } from "next-themes";
 
@@ -15,6 +15,7 @@ interface HeaderProps {
   showTestCases: boolean;
   showSidebar: boolean;
   onToggleSidebar: () => void;
+  onOpenSettings: () => void;
 }
 
 export function Header({
@@ -30,6 +31,7 @@ export function Header({
   showTestCases,
   showSidebar,
   onToggleSidebar,
+  onOpenSettings,
 }: HeaderProps) {
   const queuedFileName = queuedFile ? queuedFile.split("/")[1] : null;
   const { theme, setTheme } = useTheme();
@@ -159,6 +161,15 @@ export function Header({
 
       {/* Right: Actions */}
       <HStack gap={2.5}>
+        <IconButton
+          aria-label="Settings"
+          size="sm"
+          variant="ghost"
+          onClick={onOpenSettings}
+        >
+          <Settings size={14} />
+        </IconButton>
+
         <IconButton
           aria-label="Toggle theme"
           size="sm"

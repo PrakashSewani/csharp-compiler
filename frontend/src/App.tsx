@@ -8,6 +8,7 @@ import { Header } from "./components/Header";
 import { StatusBar } from "./components/StatusBar";
 import { CommandPalette } from "./components/CommandPalette";
 import { NewSolutionModal, NewFileModal } from "./components/Modals";
+import { SettingsModal } from "./components/SettingsModal";
 import {
   Box,
   Flex,
@@ -37,6 +38,7 @@ export default function App() {
   const [newFileModalOpen, setNewFileModalOpen] = useState(false);
   const [newFileTargetSolution, setNewFileTargetSolution] = useState<string | null>(null);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [settingsModalOpen, setSettingsModalOpen] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const lintTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
@@ -301,6 +303,7 @@ public class Solution
         showTestCases={showTestCases}
         showSidebar={showSidebar}
         onToggleSidebar={() => setShowSidebar(!showSidebar)}
+        onOpenSettings={() => setSettingsModalOpen(true)}
       />
 
       <Group orientation="horizontal" style={{ flex: 1, overflow: "hidden" }}>
@@ -472,6 +475,12 @@ public class Solution
         onToggleTests={() => setShowTestCases((s) => !s)}
         onToggleSidebar={() => setShowSidebar((s) => !s)}
         onSave={handleSave}
+      />
+
+      <SettingsModal
+        open={settingsModalOpen}
+        onClose={() => setSettingsModalOpen(false)}
+        onSettingsChanged={refreshSolutions}
       />
     </Box>
   );

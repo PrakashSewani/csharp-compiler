@@ -10,8 +10,10 @@ import {
   saveFile,
   deleteFile,
   migrateFlatFiles,
+  migrateProjects,
 } from "./fileService.js";
 import { executeCode, lintCode } from "./executor.js";
+import { getConfig, updateConfig } from "./configService.js";
 
 const app = express();
 app.use(cors());
@@ -99,6 +101,44 @@ app.delete("/api/solutions/:solution/files/:file", async (req, res) => {
   try {
     await deleteFile(req.params.solution, req.params.file);
     res.json({ success: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// --- Settings Endpoints ---
+
+app.get("/api/settings", async (_req, res) => {
+  try {
+    const config = await getConfig();
+    res.json(config);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.put("/api/settings", async (req, res) => {
+  try {
+    const { storagePath } = req.body;
+    if (!storagePath) return res.status(400).json({ error: "storagePath is required" });
+    const config = await updateConfig({ storagePath });
+    res.json(config);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/api/settings/migrate", async (req, res) => {
+  try {
+    const { storagePath, mode } = req.body;
+    if (!storagePath) return res.status(400).json({ error: "storagePath is required" });
+    if (!["new-only", "all"].includes(mode)) {
+      return res.status(400).json({ error: "mode must be 'new-only' or 'all'" });
+    }
+
+    const result = await migrateProjects(storagePath, mode);
+    await updateConfig({ storagePath });
+    res.json({ success: true, moved: result.moved });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
   }

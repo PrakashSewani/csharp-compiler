@@ -1,7 +1,6 @@
 import fs from "fs/promises";
 import path from "path";
-
-const FILES_DIR = process.env.FILES_DIR || path.join(process.cwd(), "files");
+import { getStoragePath } from "./configService.js";
 
 interface TestCase {
   input: string;
@@ -27,14 +26,16 @@ interface SolutionFolder {
   updatedAt: string;
 }
 
-export async function ensureDir() {
-  await fs.mkdir(FILES_DIR, { recursive: true });
+export async function ensureDir(dir?: string) {
+  const target = dir || (await getStoragePath());
+  await fs.mkdir(target, { recursive: true });
 }
 
 // --- Solution/Folder Operations ---
 
 export async function listSolutions(): Promise<SolutionFolder[]> {
-  await ensureDir();
+  const FILES_DIR = await getStoragePath();
+  await ensureDir(FILES_DIR);
   const entries = await fs.readdir(FILES_DIR, { withFileTypes: true });
   const dirs = entries.filter((e) => e.isDirectory() && !e.name.startsWith("."));
   const solutions: SolutionFolder[] = [];
@@ -62,6 +63,7 @@ export async function listSolutions(): Promise<SolutionFolder[]> {
 }
 
 export async function createSolution(name: string): Promise<void> {
+  const FILES_DIR = await getStoragePath();
   const cleanName = name.trim().replace(/[^a-zA-Z0-9_]/g, "");
   if (!cleanName) throw new Error("Invalid solution name");
 
@@ -73,11 +75,13 @@ export async function createSolution(name: string): Promise<void> {
 }
 
 export async function deleteSolution(name: string): Promise<void> {
+  const FILES_DIR = await getStoragePath();
   const solutionPath = path.join(FILES_DIR, name);
   await fs.rm(solutionPath, { recursive: true, force: true });
 }
 
 export async function renameSolution(oldName: string, newName: string): Promise<void> {
+  const FILES_DIR = await getStoragePath();
   const cleanName = newName.trim().replace(/[^a-zA-Z0-9_]/g, "");
   if (!cleanName) throw new Error("Invalid solution name");
 
@@ -109,6 +113,7 @@ export async function renameSolution(oldName: string, newName: string): Promise<
 // --- File Operations (within a solution) ---
 
 export async function listFilesInSolution(solutionName: string): Promise<FileListItem[]> {
+  const FILES_DIR = await getStoragePath();
   const solutionPath = path.join(FILES_DIR, solutionName);
 
   try {
@@ -135,6 +140,7 @@ export async function listFilesInSolution(solutionName: string): Promise<FileLis
 }
 
 export async function getFile(solutionName: string, fileName: string): Promise<FileEntry | null> {
+  const FILES_DIR = await getStoragePath();
   const dirPath = path.join(FILES_DIR, solutionName, fileName);
   const mainPath = path.join(dirPath, "Main.cs");
   const metaPath = path.join(dirPath, "meta.json");
@@ -164,6 +170,7 @@ export async function saveFile(
   code: string,
   testCases: TestCase[] = []
 ): Promise<void> {
+  const FILES_DIR = await getStoragePath();
   const dirPath = path.join(FILES_DIR, solutionName, fileName);
   await fs.mkdir(dirPath, { recursive: true });
 
@@ -213,6 +220,7 @@ export async function saveFile(
 }
 
 export async function deleteFile(solutionName: string, fileName: string): Promise<void> {
+  const FILES_DIR = await getStoragePath();
   const dirPath = path.join(FILES_DIR, solutionName, fileName);
   await fs.rm(dirPath, { recursive: true, force: true });
   await updateSlnFile(solutionName);
@@ -221,7 +229,8 @@ export async function deleteFile(solutionName: string, fileName: string): Promis
 // --- Migration ---
 
 export async function migrateFlatFiles(): Promise<void> {
-  await ensureDir();
+  const FILES_DIR = await getStoragePath();
+  await ensureDir(FILES_DIR);
   const entries = await fs.readdir(FILES_DIR, { withFileTypes: true });
   const dirs = entries.filter((e) => e.isDirectory() && !e.name.startsWith("."));
 
@@ -259,6 +268,56 @@ export async function migrateFlatFiles(): Promise<void> {
   await fs.writeFile(path.join(defaultPath, `${defaultSolution}.sln`), slnContent, "utf-8");
 
   console.log("Migration complete!");
+}
+
+export async function migrateProjects(
+  targetPath: string,
+  mode: "new-only" | "all"
+): Promise<{ moved: number }> {
+  const oldPath = await getStoragePath();
+  const newPath = targetPath;
+
+  if (mode === "new-only") {
+    await ensureDir(newPath);
+    return { moved: 0 };
+  }
+
+  // mode === "all": move all solutions from old path to new path
+  await ensureDir(newPath);
+
+  let moved = 0;
+  try {
+    const entries = await fs.readdir(oldPath, { withFileTypes: true });
+    const dirs = entries.filter((e) => e.isDirectory() && !e.name.startsWith("."));
+
+    for (const dir of dirs) {
+      const src = path.join(oldPath, dir.name);
+      const dest = path.join(newPath, dir.name);
+
+      // Skip if destination already exists
+      try {
+        await fs.access(dest);
+        console.log(`  Skipped (already exists): ${dir.name}`);
+        continue;
+      } catch {}
+
+      await fs.rename(src, dest);
+      moved++;
+      console.log(`  Moved: ${dir.name}`);
+    }
+
+    // Clean up old directory if empty
+    try {
+      const remaining = await fs.readdir(oldPath);
+      if (remaining.length === 0) {
+        await fs.rmdir(oldPath);
+      }
+    } catch {}
+  } catch (e: any) {
+    if (e.code !== "ENOENT") throw e;
+  }
+
+  return { moved };
 }
 
 // --- .sln File Generation ---
@@ -314,6 +373,7 @@ function generateSlnFile(solutionName: string, projectNames: string[]): string {
 }
 
 async function updateSlnFile(solutionName: string): Promise<void> {
+  const FILES_DIR = await getStoragePath();
   const solutionPath = path.join(FILES_DIR, solutionName);
   const slnPath = path.join(solutionPath, `${solutionName}.sln`);
 
@@ -326,5 +386,3 @@ async function updateSlnFile(solutionName: string): Promise<void> {
     await fs.writeFile(slnPath, slnContent, "utf-8");
   } catch {}
 }
-
-

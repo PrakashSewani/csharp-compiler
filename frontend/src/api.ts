@@ -147,3 +147,35 @@ export async function lintCode(
     }
   );
 }
+
+// --- Settings API ---
+
+export interface Settings {
+  storagePath: string;
+}
+
+export async function getSettings(): Promise<Settings> {
+  return request<Settings>(`${API_BASE}/settings`);
+}
+
+export async function updateSettings(storagePath: string): Promise<Settings> {
+  return request<Settings>(`${API_BASE}/settings`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ storagePath }),
+  });
+}
+
+export async function migrateProjects(
+  storagePath: string,
+  mode: "new-only" | "all"
+): Promise<{ success: boolean; moved: number }> {
+  return request<{ success: boolean; moved: number }>(
+    `${API_BASE}/settings/migrate`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ storagePath, mode }),
+    }
+  );
+}

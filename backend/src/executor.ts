@@ -5,7 +5,6 @@ import { v4 as uuid } from "uuid";
 
 const docker = new Docker({ socketPath: process.env.DOCKER_HOST || "/var/run/docker.sock" });
 const SANDBOX_IMAGE = process.env.SANDBOX_IMAGE || "csharp-sandbox";
-const FILES_DIR = process.env.FILES_DIR || "/app/files";
 // Shared workspace volume mounted in both backend and sandbox containers
 const WORKSPACE = process.env.EXEC_WORKSPACE || "/exec-workspace";
 
