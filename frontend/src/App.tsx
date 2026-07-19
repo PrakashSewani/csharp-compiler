@@ -19,6 +19,36 @@ import {
 import * as api from "./api";
 import type { TestCase, ExecutionResult, LintError, SolutionFolder } from "./api";
 
+const ERRORS_STORAGE_PREFIX = "csharp-compiler-errors:";
+
+function loadPersistedErrors(fileKey: string): LintError[] {
+  try {
+    const raw = localStorage.getItem(ERRORS_STORAGE_PREFIX + fileKey);
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return [];
+}
+
+function persistErrors(fileKey: string, errors: LintError[]) {
+  try {
+    localStorage.setItem(ERRORS_STORAGE_PREFIX + fileKey, JSON.stringify(errors));
+  } catch {}
+}
+
+function clearPersistedErrors(fileKey: string) {
+  localStorage.removeItem(ERRORS_STORAGE_PREFIX + fileKey);
+}
+
+function clearPersistedErrorsForSolution(solution: string) {
+  const prefix = ERRORS_STORAGE_PREFIX + solution + "/";
+  const keysToRemove: string[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key && key.startsWith(prefix)) keysToRemove.push(key);
+  }
+  keysToRemove.forEach((k) => localStorage.removeItem(k));
+}
+
 export default function App() {
   const [solutions, setSolutions] = useState<SolutionFolder[]>([]);
   const [currentSolution, setCurrentSolution] = useState<string | null>(null);
@@ -67,14 +97,15 @@ export default function App() {
 
   const openFile = useCallback(async (solution: string, file: string) => {
     const entry = await api.getFile(solution, file);
+    const fileKey = `${solution}/${file}`;
     setCurrentSolution(solution);
     setCurrentFile(file);
-    setQueuedFile(`${solution}/${file}`);
+    setQueuedFile(fileKey);
     setCode(entry.code);
     setTestCases(entry.testCases || []);
     setOutput(null);
-    setExecutionErrors([]);
-    setLintErrors([]);
+    setExecutionErrors(loadPersistedErrors(fileKey));
+    setLintErrors(loadPersistedErrors(fileKey));
   }, []);
 
   const createNewSolution = useCallback(async (name: string) => {
@@ -123,6 +154,7 @@ public class Solution
       setCode(newCode);
       setExecutionErrors([]);
       setLintErrors([]);
+      if (currentFileKey) clearPersistedErrors(currentFileKey);
 
       if (currentSolution && currentFile) {
         clearTimeout(saveTimer.current);
@@ -140,6 +172,7 @@ public class Solution
           try {
             const result = await api.lintCode(newCode);
             setLintErrors(result.errors);
+            if (currentFileKey) persistErrors(currentFileKey, result.errors);
           } catch {
             setLintErrors([]);
           }
@@ -148,7 +181,7 @@ public class Solution
         }
       }, 2000);
     },
-    [currentSolution, currentFile, testCases, refreshSolutions]
+    [currentSolution, currentFile, currentFileKey, testCases, refreshSolutions]
   );
 
   const handleTestCasesChange = useCallback(
@@ -181,7 +214,9 @@ public class Solution
         fileStdin || undefined
       );
       setOutput(result);
-      setExecutionErrors(result.compileErrorsList || []);
+      const compileErrors = result.compileErrorsList || [];
+      setExecutionErrors(compileErrors);
+      persistErrors(queuedFile, compileErrors);
     } catch (e: any) {
       setOutput({
         stdout: "",
@@ -192,6 +227,7 @@ public class Solution
         timedOut: false,
       });
       setExecutionErrors([]);
+      clearPersistedErrors(queuedFile);
     } finally {
       setIsRunning(false);
     }
@@ -209,6 +245,7 @@ public class Solution
   const handleDeleteSolution = useCallback(
     async (name: string) => {
       await api.deleteSolution(name);
+      clearPersistedErrorsForSolution(name);
       if (currentSolution === name) {
         setCurrentSolution(null);
         setCurrentFile(null);
@@ -230,6 +267,7 @@ public class Solution
   const handleDeleteFile = useCallback(
     async (solution: string, file: string) => {
       await api.deleteFile(solution, file);
+      clearPersistedErrors(`${solution}/${file}`);
       if (currentSolution === solution && currentFile === file) {
         setCurrentFile(null);
         setCode("");

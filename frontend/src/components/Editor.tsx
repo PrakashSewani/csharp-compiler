@@ -67,7 +67,7 @@ export function Editor({ code, onChange, errors }: EditorProps) {
     } catch {
       monaco.editor.setModelMarkers(model, "csharp-lint", []);
     }
-  }, [errors]);
+  }, [errors, code]);
 
   useEffect(() => {
     const handleNavigate = (e: CustomEvent) => {
