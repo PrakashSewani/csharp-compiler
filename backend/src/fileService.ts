@@ -1,23 +1,38 @@
 import fs from "fs/promises";
 import path from "path";
 import { getStoragePath } from "./configService.js";
+import { ExecutionMode, getRuntime, LanguageId } from "./runtimes.js";
 
-interface TestCase {
+export interface TestCase {
   input: string;
   expectedOutput: string;
 }
 
-interface FileEntry {
+export interface ProblemMetadata {
+  schemaVersion: 2;
   name: string;
-  code: string;
+  languageId: LanguageId;
+  runtimeId: string;
+  sourceFileName: string;
+  executionMode: ExecutionMode;
+  scratchStdin: string;
   testCases: TestCase[];
   createdAt: string;
   updatedAt: string;
 }
 
+interface FileEntry extends ProblemMetadata {
+  code: string;
+  metadata: ProblemMetadata;
+}
+
 interface FileListItem {
   name: string;
   updatedAt: string;
+  languageId: LanguageId;
+  runtimeId: string;
+  sourceFileName: string;
+  executionMode: ExecutionMode;
 }
 
 interface SolutionFolder {
@@ -26,170 +41,307 @@ interface SolutionFolder {
   updatedAt: string;
 }
 
-export async function ensureDir(dir?: string) {
+export interface SaveFileInput {
+  code: string;
+  testCases?: TestCase[];
+  languageId: LanguageId;
+  runtimeId: string;
+  sourceFileName: string;
+  executionMode: ExecutionMode;
+  scratchStdin?: string;
+}
+
+const IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$/;
+const SOURCE_FILE = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/;
+
+export function assertIdentifier(value: string, label: string): string {
+  if (!IDENTIFIER.test(value)) throw new Error(`Invalid ${label}`);
+  return value;
+}
+
+function assertSourceFileName(value: string): string {
+  if (!SOURCE_FILE.test(value) || path.basename(value) !== value) {
+    throw new Error("Invalid sourceFileName");
+  }
+  return value;
+}
+
+function containedPath(root: string, ...segments: string[]): string {
+  const resolvedRoot = path.resolve(root);
+  const resolved = path.resolve(resolvedRoot, ...segments);
+  if (resolved !== resolvedRoot && !resolved.startsWith(`${resolvedRoot}${path.sep}`)) {
+    throw new Error("Path escapes storage root");
+  }
+  return resolved;
+}
+
+function normalizeTestCases(value: unknown): TestCase[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
+    .map((item) => ({
+      input: typeof item.input === "string" ? item.input : "",
+      expectedOutput: typeof item.expectedOutput === "string" ? item.expectedOutput : "",
+    }));
+}
+
+function normalizeMetadata(name: string, raw: any, fallbackTimestamp = ""): ProblemMetadata {
+  const languageId: LanguageId = raw?.languageId === "python" || raw?.languageId === "java"
+    ? raw.languageId
+    : "csharp";
+  const defaults = languageId === "python"
+    ? { runtimeId: "python-3", sourceFileName: "main.py" }
+    : languageId === "java"
+      ? { runtimeId: "java-21", sourceFileName: "Main.java" }
+      : { runtimeId: "dotnet-8", sourceFileName: "Main.cs" };
+  const runtimeId = typeof raw?.runtimeId === "string" ? raw.runtimeId : defaults.runtimeId;
+  getRuntime(languageId, runtimeId);
+  const sourceFileName = assertSourceFileName(
+    typeof raw?.sourceFileName === "string" ? raw.sourceFileName : defaults.sourceFileName
+  );
+  const now = fallbackTimestamp || new Date().toISOString();
+
+  return {
+    schemaVersion: 2,
+    name,
+    languageId,
+    runtimeId,
+    sourceFileName,
+    executionMode: raw?.executionMode === "tests" ? "tests" : "stdin",
+    scratchStdin: typeof raw?.scratchStdin === "string" ? raw.scratchStdin : "",
+    testCases: normalizeTestCases(raw?.testCases),
+    createdAt: typeof raw?.createdAt === "string" && raw.createdAt ? raw.createdAt : now,
+    updatedAt: typeof raw?.updatedAt === "string" && raw.updatedAt ? raw.updatedAt : now,
+  };
+}
+
+async function readMetadata(problemDir: string, name: string): Promise<ProblemMetadata> {
+  const metaPath = containedPath(problemDir, "meta.json");
+  let raw: any = {};
+  let timestamp = "";
+  try {
+    raw = JSON.parse(await fs.readFile(metaPath, "utf-8"));
+  } catch {
+    try { timestamp = (await fs.stat(problemDir)).mtime.toISOString(); } catch {}
+  }
+  const metadata = normalizeMetadata(name, raw, timestamp);
+  if (raw?.schemaVersion !== 2 || JSON.stringify(raw) !== JSON.stringify(metadata)) {
+    await fs.writeFile(metaPath, JSON.stringify(metadata, null, 2), "utf-8");
+  }
+  return metadata;
+}
+
+export async function ensureDir(dir?: string): Promise<void> {
   const target = dir || (await getStoragePath());
   await fs.mkdir(target, { recursive: true });
 }
 
-// --- Solution/Folder Operations ---
-
 export async function listSolutions(): Promise<SolutionFolder[]> {
-  const FILES_DIR = await getStoragePath();
-  await ensureDir(FILES_DIR);
-  const entries = await fs.readdir(FILES_DIR, { withFileTypes: true });
-  const dirs = entries.filter((e) => e.isDirectory() && !e.name.startsWith("."));
+  const filesDir = await getStoragePath();
+  await ensureDir(filesDir);
+  const entries = await fs.readdir(filesDir, { withFileTypes: true });
   const solutions: SolutionFolder[] = [];
 
-  for (const dir of dirs) {
-    const solutionPath = path.join(FILES_DIR, dir.name);
-    const files = await listFilesInSolution(dir.name);
-    let updatedAt = "";
-
-    if (files.length > 0) {
-      updatedAt = files[0].updatedAt;
-    } else {
-      try {
-        const slnStat = await fs.stat(path.join(solutionPath, `${dir.name}.sln`));
-        updatedAt = slnStat.mtime.toISOString();
-      } catch {}
+  for (const entry of entries.filter((item) => item.isDirectory() && !item.name.startsWith("."))) {
+    if (!IDENTIFIER.test(entry.name)) continue;
+    const files = await listFilesInSolution(entry.name);
+    let updatedAt = files[0]?.updatedAt || "";
+    if (!updatedAt) {
+      try { updatedAt = (await fs.stat(containedPath(filesDir, entry.name))).mtime.toISOString(); } catch {}
     }
-
-    solutions.push({ name: dir.name, files, updatedAt });
+    solutions.push({ name: entry.name, files, updatedAt });
   }
 
-  return solutions.sort(
-    (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-  );
+  return solutions.sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
 }
 
 export async function createSolution(name: string): Promise<void> {
-  const FILES_DIR = await getStoragePath();
-  const cleanName = name.trim().replace(/[^a-zA-Z0-9_]/g, "");
-  if (!cleanName) throw new Error("Invalid solution name");
-
-  const solutionPath = path.join(FILES_DIR, cleanName);
-  await fs.mkdir(solutionPath, { recursive: true });
-
-  const slnContent = generateSlnFile(cleanName, []);
-  await fs.writeFile(path.join(solutionPath, `${cleanName}.sln`), slnContent, "utf-8");
+  const cleanName = assertIdentifier(name.trim(), "solution name");
+  const filesDir = await getStoragePath();
+  await ensureDir(filesDir);
+  const solutionPath = containedPath(filesDir, cleanName);
+  await fs.mkdir(solutionPath, { recursive: false });
+  await fs.writeFile(containedPath(solutionPath, `${cleanName}.sln`), generateSlnFile(cleanName, []), "utf-8");
 }
 
 export async function deleteSolution(name: string): Promise<void> {
-  const FILES_DIR = await getStoragePath();
-  const solutionPath = path.join(FILES_DIR, name);
-  await fs.rm(solutionPath, { recursive: true, force: true });
+  const filesDir = await getStoragePath();
+  await fs.rm(containedPath(filesDir, assertIdentifier(name, "solution name")), { recursive: true, force: true });
 }
 
 export async function renameSolution(oldName: string, newName: string): Promise<void> {
-  const FILES_DIR = await getStoragePath();
-  const cleanName = newName.trim().replace(/[^a-zA-Z0-9_]/g, "");
-  if (!cleanName) throw new Error("Invalid solution name");
-
-  const oldPath = path.join(FILES_DIR, oldName);
-  const newPath = path.join(FILES_DIR, cleanName);
-
+  const filesDir = await getStoragePath();
+  const oldSafeName = assertIdentifier(oldName, "solution name");
+  const cleanName = assertIdentifier(newName.trim(), "solution name");
+  const oldPath = containedPath(filesDir, oldSafeName);
+  const newPath = containedPath(filesDir, cleanName);
   try {
     await fs.access(newPath);
     throw new Error("A solution with that name already exists");
-  } catch (e: any) {
-    if (e.code !== "ENOENT") throw e;
+  } catch (error: any) {
+    if (error.code !== "ENOENT") throw error;
   }
-
   await fs.rename(oldPath, newPath);
-
-  const oldSlnPath = path.join(newPath, `${oldName}.sln`);
-  const newSlnPath = path.join(newPath, `${cleanName}.sln`);
   try {
-    await fs.rename(oldSlnPath, newSlnPath);
+    await fs.rename(
+      containedPath(newPath, `${oldSafeName}.sln`),
+      containedPath(newPath, `${cleanName}.sln`)
+    );
   } catch {}
-
-  const oldCsprojPath = path.join(newPath, `${oldName}.csproj`);
-  const newCsprojPath = path.join(newPath, `${cleanName}.csproj`);
-  try {
-    await fs.rename(oldCsprojPath, newCsprojPath);
-  } catch {}
+  await updateSlnFile(cleanName);
 }
 
-// --- File Operations (within a solution) ---
-
 export async function listFilesInSolution(solutionName: string): Promise<FileListItem[]> {
-  const FILES_DIR = await getStoragePath();
-  const solutionPath = path.join(FILES_DIR, solutionName);
-
+  const filesDir = await getStoragePath();
+  const solutionPath = containedPath(filesDir, assertIdentifier(solutionName, "solution name"));
   try {
     const entries = await fs.readdir(solutionPath, { withFileTypes: true });
-    const dirs = entries.filter((e) => e.isDirectory() && !e.name.startsWith("."));
     const results: FileListItem[] = [];
-
-    for (const dir of dirs) {
-      try {
-        const metaPath = path.join(solutionPath, dir.name, "meta.json");
-        const meta = JSON.parse(await fs.readFile(metaPath, "utf-8"));
-        results.push({ name: dir.name, updatedAt: meta.updatedAt });
-      } catch {
-        results.push({ name: dir.name, updatedAt: "" });
-      }
+    for (const entry of entries.filter((item) => item.isDirectory() && !item.name.startsWith("."))) {
+      if (!IDENTIFIER.test(entry.name)) continue;
+      const metadata = await readMetadata(containedPath(solutionPath, entry.name), entry.name);
+      results.push({
+        name: entry.name,
+        updatedAt: metadata.updatedAt,
+        languageId: metadata.languageId,
+        runtimeId: metadata.runtimeId,
+        sourceFileName: metadata.sourceFileName,
+        executionMode: metadata.executionMode,
+      });
     }
-
-    return results.sort(
-      (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-    );
-  } catch {
-    return [];
+    return results.sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
+  } catch (error: any) {
+    if (error.code === "ENOENT") return [];
+    throw error;
   }
 }
 
 export async function getFile(solutionName: string, fileName: string): Promise<FileEntry | null> {
-  const FILES_DIR = await getStoragePath();
-  const dirPath = path.join(FILES_DIR, solutionName, fileName);
-  const mainPath = path.join(dirPath, "Main.cs");
-  const metaPath = path.join(dirPath, "meta.json");
-
+  const filesDir = await getStoragePath();
+  const solution = assertIdentifier(solutionName, "solution name");
+  const file = assertIdentifier(fileName, "file name");
+  const problemDir = containedPath(filesDir, solution, file);
   try {
-    const code = await fs.readFile(mainPath, "utf-8");
-    let testCases: TestCase[] = [];
-    let createdAt = "";
-    let updatedAt = "";
-
-    try {
-      const meta = JSON.parse(await fs.readFile(metaPath, "utf-8"));
-      testCases = meta.testCases || [];
-      createdAt = meta.createdAt || "";
-      updatedAt = meta.updatedAt || "";
-    } catch {}
-
-    return { name: fileName, code, testCases, createdAt, updatedAt };
-  } catch {
-    return null;
+    const metadata = await readMetadata(problemDir, file);
+    const code = await fs.readFile(containedPath(problemDir, metadata.sourceFileName), "utf-8");
+    return { ...metadata, code, metadata };
+  } catch (error: any) {
+    if (error.code === "ENOENT") return null;
+    throw error;
   }
 }
 
 export async function saveFile(
   solutionName: string,
   fileName: string,
-  code: string,
-  testCases: TestCase[] = []
-): Promise<void> {
-  const FILES_DIR = await getStoragePath();
-  const dirPath = path.join(FILES_DIR, solutionName, fileName);
-  await fs.mkdir(dirPath, { recursive: true });
+  input: SaveFileInput
+): Promise<ProblemMetadata> {
+  const filesDir = await getStoragePath();
+  const solution = assertIdentifier(solutionName, "solution name");
+  const file = assertIdentifier(fileName, "file name");
+  const runtime = getRuntime(input.languageId, input.runtimeId);
+  const sourceFileName = assertSourceFileName(input.sourceFileName);
+  if (sourceFileName !== runtime.sourceFileName) {
+    throw new Error(`sourceFileName must be ${runtime.sourceFileName} for ${runtime.runtimeId}`);
+  }
+  const solutionPath = containedPath(filesDir, solution);
+  const problemDir = containedPath(solutionPath, file);
+  await fs.mkdir(problemDir, { recursive: true });
 
-  const mainPath = path.join(dirPath, "Main.cs");
-  const csprojPath = path.join(dirPath, `${fileName}.csproj`);
-  const metaPath = path.join(dirPath, "meta.json");
-
+  let existing: ProblemMetadata | null = null;
+  try { existing = await readMetadata(problemDir, file); } catch {}
   const now = new Date().toISOString();
+  const metadata: ProblemMetadata = {
+    schemaVersion: 2,
+    name: file,
+    languageId: input.languageId,
+    runtimeId: input.runtimeId,
+    sourceFileName,
+    executionMode: input.executionMode,
+    scratchStdin: input.scratchStdin || "",
+    testCases: normalizeTestCases(input.testCases),
+    createdAt: existing?.createdAt || now,
+    updatedAt: now,
+  };
 
-  let existingMeta: any = {};
+  await fs.writeFile(containedPath(problemDir, sourceFileName), input.code, "utf-8");
+  if (existing && existing.sourceFileName !== sourceFileName) {
+    await fs.rm(containedPath(problemDir, existing.sourceFileName), { force: true });
+  }
+  if (input.languageId === "csharp") {
+    await fs.writeFile(containedPath(problemDir, `${file}.csproj`), csharpProjectFile(), "utf-8");
+  } else {
+    await fs.rm(containedPath(problemDir, `${file}.csproj`), { force: true });
+  }
+  await fs.writeFile(containedPath(problemDir, "meta.json"), JSON.stringify(metadata, null, 2), "utf-8");
+  await updateSlnFile(solution);
+  return metadata;
+}
+
+export async function deleteFile(solutionName: string, fileName: string): Promise<void> {
+  const filesDir = await getStoragePath();
+  const solution = assertIdentifier(solutionName, "solution name");
+  const file = assertIdentifier(fileName, "file name");
+  await fs.rm(containedPath(filesDir, solution, file), { recursive: true, force: true });
+  await updateSlnFile(solution);
+}
+
+export async function migrateFlatFiles(): Promise<void> {
+  const filesDir = await getStoragePath();
+  await ensureDir(filesDir);
+  const entries = await fs.readdir(filesDir, { withFileTypes: true });
+  const dirs = entries.filter((entry) => entry.isDirectory() && IDENTIFIER.test(entry.name));
+  const legacyDirs: string[] = [];
+  for (const dir of dirs) {
+    try {
+      await fs.access(containedPath(filesDir, dir.name, "Main.cs"));
+      legacyDirs.push(dir.name);
+    } catch {}
+  }
+
+  if (legacyDirs.length) {
+    const defaultPath = containedPath(filesDir, "Default");
+    await fs.mkdir(defaultPath, { recursive: true });
+    for (const name of legacyDirs) {
+      await fs.rename(containedPath(filesDir, name), containedPath(defaultPath, name));
+    }
+    await fs.writeFile(containedPath(defaultPath, "Default.sln"), generateSlnFile("Default", []), "utf-8");
+  }
+
+  await listSolutions();
+}
+
+export async function migrateProjects(
+  targetPath: string,
+  mode: "new-only" | "all"
+): Promise<{ moved: number }> {
+  const oldPath = path.resolve(await getStoragePath());
+  const newPath = path.resolve(targetPath);
+  if (oldPath === newPath) return { moved: 0 };
+  await ensureDir(newPath);
+  if (mode === "new-only") return { moved: 0 };
+
+  let moved = 0;
   try {
-    existingMeta = JSON.parse(await fs.readFile(metaPath, "utf-8"));
-  } catch {}
+    const entries = await fs.readdir(oldPath, { withFileTypes: true });
+    for (const entry of entries.filter((item) => item.isDirectory() && IDENTIFIER.test(item.name))) {
+      const source = containedPath(oldPath, entry.name);
+      const destination = containedPath(newPath, entry.name);
+      try {
+        await fs.access(destination);
+        continue;
+      } catch {}
+      await fs.rename(source, destination);
+      moved++;
+    }
+  } catch (error: any) {
+    if (error.code !== "ENOENT") throw error;
+  }
+  return { moved };
+}
 
-  await fs.writeFile(mainPath, code, "utf-8");
-
-  await fs.writeFile(
-    csprojPath,
-    `<Project Sdk="Microsoft.NET.Sdk">
+function csharpProjectFile(): string {
+  return `<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net8.0</TargetFramework>
@@ -197,192 +349,55 @@ export async function saveFile(
     <Nullable>enable</Nullable>
   </PropertyGroup>
 </Project>
-`,
-    "utf-8"
-  );
-
-  await fs.writeFile(
-    metaPath,
-    JSON.stringify(
-      {
-        name: fileName,
-        testCases,
-        createdAt: existingMeta.createdAt || now,
-        updatedAt: now,
-      },
-      null,
-      2
-    ),
-    "utf-8"
-  );
-
-  await updateSlnFile(solutionName);
+`;
 }
-
-export async function deleteFile(solutionName: string, fileName: string): Promise<void> {
-  const FILES_DIR = await getStoragePath();
-  const dirPath = path.join(FILES_DIR, solutionName, fileName);
-  await fs.rm(dirPath, { recursive: true, force: true });
-  await updateSlnFile(solutionName);
-}
-
-// --- Migration ---
-
-export async function migrateFlatFiles(): Promise<void> {
-  const FILES_DIR = await getStoragePath();
-  await ensureDir(FILES_DIR);
-  const entries = await fs.readdir(FILES_DIR, { withFileTypes: true });
-  const dirs = entries.filter((e) => e.isDirectory() && !e.name.startsWith("."));
-
-  let needsMigration = false;
-  for (const dir of dirs) {
-    const mainCs = path.join(FILES_DIR, dir.name, "Main.cs");
-    try {
-      await fs.access(mainCs);
-      needsMigration = true;
-      break;
-    } catch {}
-  }
-
-  if (!needsMigration) return;
-
-  console.log("Migrating existing files to solution structure...");
-
-  const defaultSolution = "Default";
-  const defaultPath = path.join(FILES_DIR, defaultSolution);
-  await fs.mkdir(defaultPath, { recursive: true });
-
-  for (const dir of dirs) {
-    const oldPath = path.join(FILES_DIR, dir.name);
-    const mainCs = path.join(oldPath, "Main.cs");
-
-    try {
-      await fs.access(mainCs);
-      const newPath = path.join(defaultPath, dir.name);
-      await fs.rename(oldPath, newPath);
-      console.log(`  Migrated: ${dir.name} -> Default/${dir.name}`);
-    } catch {}
-  }
-
-  const slnContent = generateSlnFile(defaultSolution, []);
-  await fs.writeFile(path.join(defaultPath, `${defaultSolution}.sln`), slnContent, "utf-8");
-
-  console.log("Migration complete!");
-}
-
-export async function migrateProjects(
-  targetPath: string,
-  mode: "new-only" | "all"
-): Promise<{ moved: number }> {
-  const oldPath = await getStoragePath();
-  const newPath = targetPath;
-
-  if (mode === "new-only") {
-    await ensureDir(newPath);
-    return { moved: 0 };
-  }
-
-  // mode === "all": move all solutions from old path to new path
-  await ensureDir(newPath);
-
-  let moved = 0;
-  try {
-    const entries = await fs.readdir(oldPath, { withFileTypes: true });
-    const dirs = entries.filter((e) => e.isDirectory() && !e.name.startsWith("."));
-
-    for (const dir of dirs) {
-      const src = path.join(oldPath, dir.name);
-      const dest = path.join(newPath, dir.name);
-
-      // Skip if destination already exists
-      try {
-        await fs.access(dest);
-        console.log(`  Skipped (already exists): ${dir.name}`);
-        continue;
-      } catch {}
-
-      await fs.rename(src, dest);
-      moved++;
-      console.log(`  Moved: ${dir.name}`);
-    }
-
-    // Clean up old directory if empty
-    try {
-      const remaining = await fs.readdir(oldPath);
-      if (remaining.length === 0) {
-        await fs.rmdir(oldPath);
-      }
-    } catch {}
-  } catch (e: any) {
-    if (e.code !== "ENOENT") throw e;
-  }
-
-  return { moved };
-}
-
-// --- .sln File Generation ---
 
 function generateGuid(): string {
-  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0;
-    const v = c === "x" ? r : (r & 0x3) | 0x8;
-    return v.toString(16);
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (character) => {
+    const random = (Math.random() * 16) | 0;
+    return (character === "x" ? random : (random & 3) | 8).toString(16);
   });
 }
 
 function generateSlnFile(solutionName: string, projectNames: string[]): string {
-  const lines: string[] = [
+  const lines = [
     "",
     "Microsoft Visual Studio Solution File, Format Version 12.00",
     "# Visual Studio Version 17",
     "VisualStudioVersion = 17.0.31903.59",
     "MinimumVisualStudioVersion = 10.0.40219.1",
   ];
-
   const projectGuids: string[] = [];
-
-  for (const projName of projectNames) {
-    const projectGuid = generateGuid();
-    projectGuids.push(projectGuid);
-    lines.push(
-      `Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "${projName}", "${projName}\\${projName}.csproj", "{${projectGuid}}"`
-    );
+  for (const projectName of projectNames) {
+    const guid = generateGuid();
+    projectGuids.push(guid);
+    lines.push(`Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "${projectName}", "${projectName}\\${projectName}.csproj", "{${guid}}"`);
     lines.push("EndProject");
   }
-
-  lines.push("Global");
-
-  lines.push("\tGlobalSection(SolutionConfigurationPlatforms) = preSolution");
-  lines.push("\t\tDebug|Any CPU = Debug|Any CPU");
-  lines.push("\t\tRelease|Any CPU = Release|Any CPU");
-  lines.push("\tEndGlobalSection");
-
-  lines.push("\tGlobalSection(ProjectConfigurationPlatforms) = postSolution");
+  lines.push("Global", "\tGlobalSection(SolutionConfigurationPlatforms) = preSolution", "\t\tDebug|Any CPU = Debug|Any CPU", "\t\tRelease|Any CPU = Release|Any CPU", "\tEndGlobalSection", "\tGlobalSection(ProjectConfigurationPlatforms) = postSolution");
   for (const guid of projectGuids) {
     lines.push(`\t\t{${guid}}.Debug|Any CPU.ActiveCfg = Debug|Any CPU`);
     lines.push(`\t\t{${guid}}.Debug|Any CPU.Build.0 = Debug|Any CPU`);
     lines.push(`\t\t{${guid}}.Release|Any CPU.ActiveCfg = Release|Any CPU`);
     lines.push(`\t\t{${guid}}.Release|Any CPU.Build.0 = Release|Any CPU`);
   }
-  lines.push("\tEndGlobalSection");
-
-  lines.push("EndGlobal");
-  lines.push("");
-
+  lines.push("\tEndGlobalSection", "EndGlobal", "");
   return lines.join("\r\n");
 }
 
 async function updateSlnFile(solutionName: string): Promise<void> {
-  const FILES_DIR = await getStoragePath();
-  const solutionPath = path.join(FILES_DIR, solutionName);
-  const slnPath = path.join(solutionPath, `${solutionName}.sln`);
-
+  const filesDir = await getStoragePath();
+  const solution = assertIdentifier(solutionName, "solution name");
+  const solutionPath = containedPath(filesDir, solution);
   try {
-    const entries = await fs.readdir(solutionPath, { withFileTypes: true });
-    const projectDirs = entries.filter((e) => e.isDirectory() && !e.name.startsWith("."));
-    const projectNames = projectDirs.map((d) => d.name);
-
-    const slnContent = generateSlnFile(solutionName, projectNames);
-    await fs.writeFile(slnPath, slnContent, "utf-8");
-  } catch {}
+    const files = await listFilesInSolution(solution);
+    const csharpProjects = files.filter((file) => file.languageId === "csharp").map((file) => file.name);
+    await fs.writeFile(
+      containedPath(solutionPath, `${solution}.sln`),
+      generateSlnFile(solution, csharpProjects),
+      "utf-8"
+    );
+  } catch (error: any) {
+    if (error.code !== "ENOENT") throw error;
+  }
 }

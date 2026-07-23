@@ -23,6 +23,7 @@ import {
   InputGroup,
 } from "@chakra-ui/react";
 import type { SolutionFolder } from "../api";
+import { LANGUAGE_LABELS } from "../languages";
 
 interface FileExplorerProps {
   solutions: SolutionFolder[];
@@ -116,7 +117,7 @@ export function FileExplorer({
             <Text mt={1} fontSize="xs" textAlign="center" color="text.muted">
               {query
                 ? "Try a different problem or collection name."
-                : "Create a collection, then add your first C# problem."}
+                : "Create a collection, then add your first coding problem."}
             </Text>
             {!query && (
               <Text
@@ -205,7 +206,7 @@ export function FileExplorer({
                         <Flex alignItems="center" gap={4} px={3} py={3} borderRadius="md" bg="bg.surface">
                           <Box>
                             <Text fontSize="sm" fontWeight="600" color="text.secondary">No problems yet</Text>
-                            <Text fontSize="xs" color="text.muted">Use Add problem below to create a C# exercise.</Text>
+                            <Text fontSize="xs" color="text.muted">Use Add problem below to create an exercise.</Text>
                           </Box>
                         </Flex>
                       ) : (
@@ -244,9 +245,12 @@ export function FileExplorer({
                                 <Flex w={6} h={6} alignItems="center" justifyContent="center" borderRadius="sm" bg="bg.surface" color={isActive ? "accent.blue" : "text.muted"} flexShrink={0}>
                                   <FileCode2 size={14} color="currentColor" />
                                 </Flex>
-                                <Text fontSize="sm" fontWeight={isActive ? "700" : "500"} truncate>
-                                  {file.name}
-                                </Text>
+                                 <Text fontSize="sm" fontWeight={isActive ? "700" : "500"} truncate>
+                                   {file.name}
+                                 </Text>
+                                 <Text ml="auto" fontSize="2xs" fontWeight="700" color="text.muted" textTransform="uppercase" letterSpacing="wide">
+                                   {LANGUAGE_LABELS[file.languageId]}
+                                 </Text>
                               </Flex>
                             </Flex>
                           );
@@ -291,7 +295,7 @@ export function FileExplorer({
                           justifyContent="center"
                         >
                           <Trash2 size={14} />
-                          Delete file
+                          Delete problem
                         </Button>
                       )}
                       <Button
@@ -306,7 +310,7 @@ export function FileExplorer({
                         justifyContent="center"
                       >
                         <Trash2 size={15} />
-                        Delete solution
+                        Delete collection
                       </Button>
                     </VStack>
                   </Flex>

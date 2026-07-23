@@ -53,7 +53,7 @@ export function SettingsModal({ open, onClose, onSettingsChanged }: SettingsModa
       } else {
         const result = await api.migrateProjects(newPath.trim(), "all");
         setSuccess(
-          `Migration complete. ${result.moved} solution(s) moved to the new location.`
+          `Migration complete. ${result.moved} collection(s) moved to the new location.`
         );
       }
       onSettingsChanged();
@@ -214,7 +214,7 @@ export function SettingsModal({ open, onClose, onSettingsChanged }: SettingsModa
                         Migrate all projects
                       </Text>
                       <Text fontSize="2xs" color="text.muted">
-                        Move all existing solutions to the new location
+                        Move all existing collections to the new location
                       </Text>
                     </Box>
                   </HStack>

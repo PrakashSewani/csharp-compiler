@@ -105,7 +105,7 @@ export function TestCasePanel({ testCases, onChange, onRunAll, onCollapse }: Tes
             Add a sample case
           </Text>
           <Text mt={1} fontSize="xs" lineHeight="1.6" color="text.muted">
-            Each input is passed to <Box as="span" fontFamily="mono">Solution.Solve</Box> and compared with the expected value.
+            Each input is sent to the program as standard input. Its standard output is compared with the expected output.
           </Text>
           <Button mt={4} size="sm" variant="subtle" colorPalette="blue" onClick={addTestCase}>
             <Plus size={14} />
@@ -153,7 +153,7 @@ export function TestCasePanel({ testCases, onChange, onRunAll, onCollapse }: Tes
                     Case {selectedIndex + 1}
                   </Text>
                   <Text fontSize="xs" color="text.muted">
-                    Define the sample input and expected result.
+                    Define standard input and the expected standard output.
                   </Text>
                 </Box>
                 <HStack gap={2}>

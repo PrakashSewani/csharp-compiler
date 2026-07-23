@@ -61,9 +61,9 @@ export function CommandPalette({
 
   const commands: Command[] = [
     { id: "run", label: "Run Code", icon: <Play size={14} />, shortcut: "Ctrl+Enter", action: () => { onRun(); onClose(); } },
-    { id: "new-solution", label: "New Solution", icon: <FolderPlus size={14} />, shortcut: "Ctrl+N", action: () => { onNewSolution(); onClose(); } },
-    { id: "new-file", label: "New File", icon: <Plus size={14} />, action: () => { onNewFile(); onClose(); } },
-    { id: "save", label: "Save File", icon: <Save size={14} />, shortcut: "Ctrl+S", action: () => { onSave(); onClose(); } },
+    { id: "new-solution", label: "New Collection", icon: <FolderPlus size={14} />, shortcut: "Ctrl+N", action: () => { onNewSolution(); onClose(); } },
+    { id: "new-file", label: "New Problem", icon: <Plus size={14} />, action: () => { onNewFile(); onClose(); } },
+    { id: "save", label: "Save Problem", icon: <Save size={14} />, shortcut: "Ctrl+S", action: () => { onSave(); onClose(); } },
     { id: "toggle-theme", label: "Toggle Theme", icon: theme === "dark" ? <Sun size={14} /> : <Moon size={14} />, action: () => { setTheme(theme === "dark" ? "light" : "dark"); onClose(); } },
     { id: "toggle-tests", label: "Toggle Test Panel", icon: <FlaskConical size={14} />, shortcut: "Ctrl+Shift+T", action: () => { onToggleTests(); onClose(); } },
     { id: "toggle-sidebar", label: "Toggle Sidebar", icon: <PanelLeft size={14} />, shortcut: "Ctrl+B", action: () => { onToggleSidebar(); onClose(); } },
@@ -174,7 +174,7 @@ export function CommandPalette({
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     onKeyDown={handleKeyDown}
-                    placeholder="Type a command or search files..."
+                    placeholder="Type a command or search problems..."
                     style={{
                       flex: 1,
                       background: "transparent",

@@ -1,200 +1,311 @@
-# C# Playground — DSA Practice Environment
+# Algorithm Desk
 
-A web-based C# compiler and code runner designed for practicing Data Structures & Algorithms. Write C# code in a Monaco Editor (VS Code's editor), compile and run it in an isolated Docker sandbox, add test cases, and manage your solutions — all from the browser.
+Algorithm Desk is a self-hosted, multilingual code-practice workspace for writing and running single-file C#, Python, and Java problems. It combines a Monaco-based editor, persisted collections, stdin/stdout test cases, compiler diagnostics, and isolated Docker execution.
+
+![License](https://img.shields.io/badge/license-MIT-blue.svg)
+![Runtimes](https://img.shields.io/badge/runtimes-.NET%208%20%7C%20Python%203%20%7C%20Java%2021-5b8def)
 
 ## Features
 
-- **Monaco Editor** — Full C# syntax highlighting, bracket matching, autocomplete, and real-time compiler error markers
-- **Sandboxed Execution** — Each run compiles and executes in an isolated Docker container (no network, memory-limited, 30s timeout)
-- **Test Cases** — Define input/output test pairs; your `Solve()` method is called automatically and results are compared
-- **Solution/Folder Structure** — Organize files into solution folders, each with its own `.sln` and `.csproj`
-- **Per-file Stdin** — Each file has its own stdin tab for providing console input
-- **Inline Errors** — Compilation errors displayed inline in the editor after running code
-- **Error Persistence** — Errors survive page refreshes via localStorage
-- **Command Palette** — `Ctrl+K` to quickly navigate files, run code, toggle panels, and more
-- **Resizable Panels** — Drag panel borders to resize the sidebar, editor, output, and test cases
-- **Dark Mode** — Premium dark IDE theme with Chakra UI
-- **Configurable Storage** — Change where solution files are stored on disk, with migration support
-- **Keyboard Shortcuts** — `Ctrl+Enter` (run), `Ctrl+N` (new solution), `Ctrl+B` (toggle sidebar), `Ctrl+Shift+T` (toggle tests), `Ctrl+S` (save)
-- **Docker-based** — Runs entirely in containers. No local .NET SDK or Node.js installation needed
-
-## Prerequisites
-
-- [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/install/) (v2+)
-
-That's it. Nothing else needed on your machine.
+- C# with .NET 8, Python 3, and Java 21.
+- Runtime-aware starter templates and Monaco syntax highlighting.
+- Collections containing persisted coding problems.
+- Standard-input runs and reusable stdin/stdout test cases.
+- Language-specific compilation, validation, and inline diagnostics.
+- Automatic saving of source, test cases, execution mode, and scratch input.
+- Responsive IDE-style interface for desktop and narrower screens.
+- Confirmation before deleting a problem or an entire collection.
+- Disposable Docker containers with no network access and resource limits.
+- Compatibility support for existing C# `Solution.Solve(string)` problems.
 
 ## Quick Start
 
+Requirements:
+
+- Docker with Docker Compose
+- Ports `3000` and `3001` available
+
+Start the complete application:
+
 ```bash
-# Clone the repo
-git clone https://github.com/your-username/csharp-compiler.git
-cd csharp-compiler
-
-# Build and start everything
 docker compose up --build
-
-# Open in browser
-# → http://localhost:3000
 ```
 
-First run takes a few minutes to download the .NET SDK image (~300MB). Subsequent runs are instant.
+Open:
 
-## Usage
+- Workspace: `http://localhost:3000`
+- Backend API: `http://localhost:3001`
 
-### 1. Create a new solution
-
-Click **New Solution** in the top-left or press `Ctrl+N`. Enter a name (e.g. `TwoSum`, `MergeSort`). Each solution is a folder containing one or more files.
-
-### 2. Add a file to a solution
-
-Click the **+** icon next to a solution in the sidebar, or click **New File** in the header. Each file gets its own `.csproj` and `Main.cs` inside the solution folder.
-
-### 3. Write your solution
-
-The editor opens with a template:
-
-```csharp
-using System;
-using System.Collections.Generic;
-using System.Linq;
-
-public class Solution
-{
-    public static object Solve(string input)
-    {
-        // input: test case input (from Test Cases panel) or null
-        // Stdin: read with Console.ReadLine() from Stdin tab
-
-        // Example: read from stdin
-        // var line = Console.ReadLine();
-
-        return "";
-    }
-}
-```
-
-Implement the `Solve` method. Errors appear as red/yellow markers as you type (debounced compiler check).
-
-### 4. Add test cases (optional)
-
-Click the **Tests** button in the top-right or press `Ctrl+Shift+T` to open the test case panel. Add input/expected output pairs. Your `Solve(string input)` method will be called with each input, and the return value is compared as a string against the expected output.
-
-### 5. Provide stdin (optional)
-
-Switch to the **Stdin** tab in the output panel to provide input for `Console.ReadLine()` calls. Each file has its own独立 stdin.
-
-### 6. Run
-
-Click the green **Run** button or press `Ctrl+Enter`. Output appears in the bottom panel — compilation errors, runtime output, and test results. Compilation errors are also displayed inline in the editor.
-
-### 7. Browse and manage solutions
-
-All solutions and files appear in the left sidebar. Click any file to open it. Right-click to rename or delete solutions. Press `Ctrl+B` to toggle the sidebar.
-
-### 8. Command Palette
-
-Press `Ctrl+K` to open the command palette for quick navigation, running code, toggling panels, and more.
-
-### 9. Settings
-
-Click the gear icon to open Settings. Configure the storage path for where solution files are saved on disk. You can migrate existing files to a new location.
-
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────────┐
-│  Browser (localhost:3000)                                │
-│  ┌───────────────┐  ┌──────────────┐  ┌──────────────┐  │
-│  │ File Explorer │  │ Monaco Editor│  │ Test Cases   │  │
-│  │ (Solutions)   │  │              │  │ (per-file)   │  │
-│  └───────────────┘  └──────────────┘  └──────────────┘  │
-│  ┌───────────────┐  ┌──────────────────────────────────┐ │
-│  │ Command       │  │ Output Panel (stdin + results)   │ │
-│  │ Palette       │  │                                  │ │
-│  └───────────────┘  └──────────────────────────────────┘ │
-│  ┌─────────────────────────────────────────────────────┐ │
-│  │ Status Bar (save state, error count)                │ │
-│  └─────────────────────────────────────────────────────┘ │
-└────────────────────────┬────────────────────────────────┘
-                         │ /api/*
-┌────────────────────────▼────────────────────────────────┐
-│  Backend (Node.js + Express, port 3001)                  │
-│  ┌──────────────┐  ┌────────────────┐  ┌──────────────┐  │
-│  │ File Service │  │ Config Service │  │ Executor     │  │
-│  │ Solutions +  │  │ Storage path   │  │ (Docker-in-  │  │
-│  │ Files CRUD   │  │ + migration    │  │  Docker)     │  │
-│  └──────────────┘  └────────────────┘  └──────┬───────┘  │
-└───────────────────────────────────────────────┼──────────┘
-                                                │ Docker API
-┌───────────────────────────────────────────────▼──────────┐
-│  Sandbox Container (.NET 8 SDK)                          │
-│  - Long-running service (healthy when dotnet available)  │
-│  - Isolated: no network, 512MB RAM, 30s timeout          │
-│  - Mounts shared volume for code files                   │
-│  - Runs: dotnet build && dotnet run                      │
-└──────────────────────────────────────────────────────────┘
-```
-
-### Services
-
-| Service | Port | Description |
-|---------|------|-------------|
-| **frontend** | 3000 | React + Vite app served by Nginx. Proxies `/api` to backend |
-| **backend** | 3001 | Node.js API. Solution/file CRUD + Docker sandbox orchestration + config |
-| **sandbox** | — | Long-running .NET 8 SDK container. Healthy when `dotnet --version` succeeds |
-
-### Shared Volume
-
-A Docker named volume `csharp-exec-workspace` is shared between the backend and sandbox containers. The backend writes code files to this volume, and sandbox containers mount it to compile and run.
-
-## API Endpoints
-
-### Solutions
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/api/solutions` | List all solution folders with their files |
-| `POST` | `/api/solutions` | Create a new solution (body: `{name}`) |
-| `PUT` | `/api/solutions/:name` | Rename a solution (body: `{newName}`) |
-| `DELETE` | `/api/solutions/:name` | Delete a solution and all its files |
-
-### Files (within solutions)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/api/solutions/:solution/files` | List files in a solution |
-| `GET` | `/api/solutions/:solution/files/:file` | Get file content + test cases |
-| `POST` | `/api/solutions/:solution/files/:file` | Create/update file (body: `{code, testCases}`) |
-| `DELETE` | `/api/solutions/:solution/files/:file` | Delete a file |
-
-### Execution
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/api/execute` | Compile + run code (body: `{code, testCases?, stdin?}`) |
-| `POST` | `/api/lint` | Get compiler errors without running (body: `{code}`) |
-
-### Settings
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/api/settings` | Get current config (storage path, etc.) |
-| `PUT` | `/api/settings` | Update config (body: `{storagePath}`) |
-| `POST` | `/api/settings/migrate` | Migrate files to new storage path (body: `{storagePath, mode}`) |
-
-## Stopping
+Stop the application:
 
 ```bash
 docker compose down
 ```
 
-To also remove the shared volume (deletes cached build artifacts):
+## Supported Runtimes
+
+Algorithm Desk uses a trusted server-side runtime registry. Clients select a known runtime ID and cannot submit arbitrary images or shell commands.
+
+| Language | Runtime ID | Source file | Docker image |
+|---|---|---|---|
+| C# | `dotnet-8` | `Main.cs` | `workspace-sandbox-dotnet-8` |
+| Python | `python-3` | `main.py` | `workspace-sandbox-python-3` |
+| Java | `java-21` | `Main.java` | `workspace-sandbox-java-21` |
+
+Runtime image names and execution settings can be overridden using the variables documented in `.env.example`.
+
+## How Execution Works
+
+Every run follows the same language-neutral model:
+
+1. The backend creates a unique temporary workspace.
+2. The selected runtime adapter materializes the required source and build files.
+3. A disposable container validates or compiles the source.
+4. The program runs with supplied input piped through stdin.
+5. The backend captures stdout, stderr, exit status, timeout state, and diagnostics.
+6. The container and temporary workspace are removed.
+
+Execution modes:
+
+- **Standard input:** runs the program once with the saved scratch input.
+- **Test cases:** runs every test independently and compares trimmed stdout with trimmed expected output.
+
+Runtime commands:
+
+- C#: `dotnet build`, followed by the generated .NET assembly.
+- Python: `python3 -m py_compile main.py`, followed by isolated Python execution.
+- Java: `javac Main.java`, followed by a memory-constrained JVM process.
+
+## Sandbox Controls
+
+Execution containers currently use:
+
+- No network access.
+- Memory and CPU limits.
+- PID limits.
+- Dropped Linux capabilities.
+- `no-new-privileges`.
+- Wall-clock timeouts.
+- Capped captured output.
+- Trusted runtime images selected by the backend.
+
+The backend controls Docker through the Docker socket. Treat this application as a trusted local or private deployment unless you add authentication and move execution to a separately isolated runner service. Mounting the Docker socket into a public API service carries host-level security risk.
+
+## Project Structure
+
+```text
+algorithm-desk/
+├── backend/                 Express and TypeScript API
+│   └── src/
+│       ├── executor.ts      Generic Docker execution lifecycle
+│       ├── fileService.ts   Persistence and schema migration
+│       ├── index.ts         HTTP API
+│       └── runtimes.ts      Trusted language/runtime adapters
+├── frontend/                React, Chakra UI, Monaco, and Vite
+├── sandbox/                 Runtime Dockerfiles
+├── files/                   Persisted collections and problems
+└── docker-compose.yml       Complete local deployment
+```
+
+## Problem Storage
+
+Each problem is stored in its own directory with one source file and `meta.json`:
+
+```json
+{
+  "schemaVersion": 2,
+  "name": "TwoSum",
+  "languageId": "python",
+  "runtimeId": "python-3",
+  "sourceFileName": "main.py",
+  "executionMode": "tests",
+  "scratchStdin": "",
+  "testCases": [
+    {
+      "input": "1 2",
+      "expectedOutput": "3"
+    }
+  ],
+  "createdAt": "2026-01-01T00:00:00.000Z",
+  "updatedAt": "2026-01-01T00:00:00.000Z"
+}
+```
+
+Legacy metadata without multilingual fields is migrated when read using these defaults:
+
+```text
+languageId:     csharp
+runtimeId:      dotnet-8
+sourceFileName: Main.cs
+executionMode:  stdin
+```
+
+Existing source code is not rewritten. Older C# problems exposing `Solution.Solve(string)` receive a narrow compatibility entry point at execution time.
+
+## API
+
+### Runtime Capabilities
+
+```http
+GET /api/runtimes
+```
+
+Returns the trusted language/runtime combinations available to the client.
+
+### Collections And Problems
+
+The API retains `/api/solutions` for backward compatibility, while the UI calls these entities collections.
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/solutions` | List collections and problem metadata |
+| `POST` | `/api/solutions` | Create a collection |
+| `PUT` | `/api/solutions/:name` | Rename a collection |
+| `DELETE` | `/api/solutions/:name` | Delete a collection and its problems |
+| `GET` | `/api/solutions/:collection/files` | List problems in a collection |
+| `GET` | `/api/solutions/:collection/files/:problem` | Read a problem |
+| `POST` | `/api/solutions/:collection/files/:problem` | Create or save a problem |
+| `DELETE` | `/api/solutions/:collection/files/:problem` | Delete a problem |
+
+Example save body:
+
+```json
+{
+  "languageId": "java",
+  "runtimeId": "java-21",
+  "sourceFileName": "Main.java",
+  "executionMode": "stdin",
+  "scratchStdin": "hello",
+  "code": "public class Main { ... }",
+  "testCases": []
+}
+```
+
+### Execute
+
+```http
+POST /api/execute
+```
+
+```json
+{
+  "languageId": "python",
+  "runtimeId": "python-3",
+  "executionMode": "tests",
+  "code": "import sys\nprint(sys.stdin.read().strip())",
+  "testCases": [
+    {
+      "input": "desk",
+      "expectedOutput": "desk"
+    }
+  ]
+}
+```
+
+### Lint Or Validate
+
+```http
+POST /api/lint
+```
+
+```json
+{
+  "languageId": "csharp",
+  "runtimeId": "dotnet-8",
+  "code": "using System; ..."
+}
+```
+
+Diagnostics are normalized as:
+
+```json
+{
+  "line": 4,
+  "column": 12,
+  "message": "Syntax error",
+  "severity": "error"
+}
+```
+
+## Local Development
+
+The easiest development environment is Docker Compose because code execution requires Docker images and a shared execution workspace.
+
+Backend type-check/build:
 
 ```bash
-docker compose down -v
+cd backend
+npm install
+npm run build
 ```
+
+Frontend development:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Frontend production build:
+
+```bash
+cd frontend
+npm run build
+```
+
+## Configuration
+
+Copy `.env.example` to `.env` to override defaults:
+
+```bash
+cp .env.example .env
+```
+
+Important variables:
+
+| Variable | Purpose |
+|---|---|
+| `EXEC_OUTPUT_LIMIT_BYTES` | Maximum captured output per process |
+| `DOTNET_SANDBOX_IMAGE` | Trusted .NET runtime image |
+| `PYTHON_SANDBOX_IMAGE` | Trusted Python runtime image |
+| `JAVA_SANDBOX_IMAGE` | Trusted Java runtime image |
+| `EXEC_WORKSPACE_VOLUME` | Docker volume shared with execution containers |
+
+## Repository Rename
+
+Recommended repository name:
+
+```text
+algorithm-desk
+```
+
+After renaming the repository on GitHub, update the local remote if necessary:
+
+```bash
+git remote set-url origin https://github.com/PrakashSewani/algorithm-desk.git
+```
+
+GitHub normally redirects the previous repository URL, but updating local clones, deployment configuration, badges, and bookmarks avoids relying on that redirect.
+
+## Current Scope
+
+Included:
+
+- Single source file per problem.
+- C#, Python, and Java standard-library execution.
+- Standard input and expected-output tests.
+- Persisted local collections.
+
+Not yet included:
+
+- Multi-file projects.
+- Arbitrary dependency installation.
+- Maven, Gradle, pytest, NuGet, or other framework workflows.
+- Full language-server IntelliSense.
+- Debugger and breakpoints.
+- Authentication or multi-user authorization.
 
 ## License
 
-MIT
+MIT License. See `LICENSE`.

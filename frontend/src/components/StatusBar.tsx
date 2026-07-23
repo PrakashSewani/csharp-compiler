@@ -5,9 +5,12 @@ interface StatusBarProps {
   isSaving: boolean;
   errorCount: number;
   testCount: number;
+  languageLabel: string;
+  runtimeLabel: string;
+  saveError?: string;
 }
 
-export function StatusBar({ isSaving, errorCount, testCount }: StatusBarProps) {
+export function StatusBar({ isSaving, errorCount, testCount, languageLabel, runtimeLabel, saveError }: StatusBarProps) {
   return (
     <Flex
       alignItems="center"
@@ -21,12 +24,13 @@ export function StatusBar({ isSaving, errorCount, testCount }: StatusBarProps) {
       borderColor="border.subtle"
       aria-live="polite"
     >
-      <HStack gap={2.5} color={isSaving ? "accent.yellow" : "text.muted"}>
+      <HStack gap={2.5} color={saveError ? "accent.red" : isSaving ? "accent.yellow" : "text.muted"}>
         <Cloud size={12} />
-        <Text fontSize="xs">{isSaving ? "Saving changes" : "All changes saved"}</Text>
+        <Text fontSize="xs">{saveError ? "Save failed" : isSaving ? "Saving changes" : "All changes saved"}</Text>
       </HStack>
 
       <HStack gap={6}>
+        <Text fontSize="xs" color="text.muted" display={{ base: "none", md: "block" }}>{languageLabel} / {runtimeLabel}</Text>
         <HStack gap={2} color={errorCount > 0 ? "accent.red" : "text.muted"}>
           <CircleAlert size={12} />
           <Text fontSize="xs">{errorCount} problem{errorCount === 1 ? "" : "s"}</Text>

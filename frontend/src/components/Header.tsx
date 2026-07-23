@@ -24,6 +24,8 @@ interface HeaderProps {
   onToggleOutput: () => void;
   onOpenSettings: () => void;
   testSummary?: { passed: number; total: number };
+  languageLabel: string;
+  runtimeLabel: string;
 }
 
 export function Header({
@@ -39,6 +41,8 @@ export function Header({
   onToggleOutput,
   onOpenSettings,
   testSummary,
+  languageLabel,
+  runtimeLabel,
 }: HeaderProps) {
   const { theme, setTheme } = useTheme();
   const hasFile = Boolean(currentSolution && currentFile);
@@ -82,7 +86,7 @@ export function Header({
               truncate
               display={{ base: "none", sm: "block" }}
             >
-              {hasFile ? `${currentSolution} / ${currentFile}` : "C# practice workspace"}
+              {hasFile ? `${currentSolution} / ${currentFile} · ${languageLabel} / ${runtimeLabel}` : "Multilingual practice workspace"}
             </Text>
           </Box>
         </HStack>
@@ -167,7 +171,7 @@ export function Header({
           boxShadow={hasFile ? "0 8px 24px rgba(59, 130, 246, 0.14)" : "none"}
         >
           {!isRunning && <Play size={16} fill="currentColor" />}
-          <Text display={{ base: "none", md: "inline" }}>Run</Text>
+           <Text display={{ base: "none", md: "inline" }}>Run {hasFile ? languageLabel : ""}</Text>
         </Button>
       </HStack>
     </Flex>

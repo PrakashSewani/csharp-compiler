@@ -1,8 +1,7 @@
 FROM mcr.microsoft.com/dotnet/sdk:8.0
 
-WORKDIR /sandbox
+WORKDIR /work
 
-# Pre-create a console app template to speed up builds
-RUN dotnet new console -n template --force && rm -rf template
+RUN dotnet new console -n template -o /tmp/template --force && rm -rf /tmp/template
 
-CMD ["dotnet", "run"]
+CMD ["dotnet", "--info"]

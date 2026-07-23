@@ -2,13 +2,20 @@ import Docker from "dockerode";
 import fs from "fs/promises";
 import path from "path";
 import { v4 as uuid } from "uuid";
+import {
+  Diagnostic,
+  ExecutionMode,
+  getRuntime,
+  LanguageId,
+  RuntimeAdapter,
+} from "./runtimes.js";
 
 const docker = new Docker({ socketPath: process.env.DOCKER_HOST || "/var/run/docker.sock" });
-const SANDBOX_IMAGE = process.env.SANDBOX_IMAGE || "csharp-sandbox";
-// Shared workspace volume mounted in both backend and sandbox containers
 const WORKSPACE = process.env.EXEC_WORKSPACE || "/exec-workspace";
+const WORKSPACE_VOLUME = process.env.EXEC_WORKSPACE_VOLUME || "algorithm-desk-exec-workspace";
+const OUTPUT_LIMIT = Number(process.env.EXEC_OUTPUT_LIMIT_BYTES || 64 * 1024);
 
-interface TestCase {
+export interface TestCase {
   input: string;
   expectedOutput: string;
 }
@@ -18,7 +25,7 @@ interface ExecutionResult {
   stderr: string;
   exitCode: number;
   compileErrors: string;
-  compileErrorsList: { line: number; column: number; message: string; severity: "error" | "warning" }[];
+  compileErrorsList: Diagnostic[];
   testResults?: {
     passed: number;
     total: number;
@@ -27,325 +34,221 @@ interface ExecutionResult {
   timedOut: boolean;
 }
 
-function wrapCodeWithMain(code: string, testCases?: TestCase[], stdin?: string): string {
-  let wrapped = code;
-
-  if (testCases && testCases.length > 0) {
-    const testHarness = `
-// === TEST HARNESS (auto-generated) ===
-class __TestHarness
-{
-    static void Main(string[] args)
-    {
-        int passed = 0;
-        int total = ${testCases.length};
-        string[] results = new string[total];
-
-${testCases
-  .map(
-    (tc, i) => `
-        // Test ${i + 1}
-        try
-        {
-            var __input${i} = ${JSON.stringify(tc.input)};
-            var __expected${i} = ${JSON.stringify(tc.expectedOutput)};
-            var __actual${i} = __TestCase.Run(__input${i});
-            bool __passed${i} = __actual${i}.Trim() == __expected${i}.Trim();
-            if (__passed${i}) passed++;
-            results[${i}] = $"Test ${i + 1}: {(__passed${i} ? "PASS" : "FAIL")} | Input: {__input${i}} | Expected: {__expected${i}} | Got: {__actual${i}}";
-        }
-        catch (Exception ex)
-        {
-            results[${i}] = $"Test ${i + 1}: ERROR | ${tc.input} | Exception: {ex.Message}";
-        }
-`
-  )
-  .join("\n")}
-
-        Console.WriteLine($"=== Results: {passed}/{total} tests passed ===");
-        foreach (var r in results) Console.WriteLine(r);
-    }
+interface SandboxResult {
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+  timedOut: boolean;
+  outputLimitExceeded: boolean;
 }
 
-class __TestCase
-{
-    public static string Run(string input)
-    {
-        var __sw = new StringWriter();
-        Console.SetOut(__sw);
-        var __result = Solution.Solve(input);
-        Console.SetOut(new StreamWriter(Console.OpenStandardOutput()) { AutoFlush = true });
-        return __result?.ToString() ?? "";
-    }
-}
-`;
-    wrapped = wrapped + "\n" + testHarness;
-  } else if (stdin) {
-    wrapped = `
-using System;
-using System.IO;
-
-${wrapped.replace(/^using\s+System.*;?\n?/gm, "").replace(/^using\s+System\.IO.*;?\n?/gm, "")}
-
-class __Runner
-{
-    static void Main(string[] args)
-    {
-        Console.SetIn(new StringReader(${JSON.stringify(stdin)}));
-        Solution.Solve(null);
-    }
-}
-`;
-  }
-
-  return wrapped;
-}
-
-function wrapCodeWithMainNoTestCases(code: string): string {
-  if (
-    code.includes("static void Main") ||
-    code.includes("static async Task Main") ||
-    code.includes("static int Main")
-  ) {
-    return code;
-  }
-
-  return `${code}
-
-class __Runner
-{
-    static void Main(string[] args)
-    {
-        try { Solution.Solve(null); }
-        catch (Exception ex) { Console.WriteLine(ex.Message); }
-    }
-}`;
-}
-
-const CSPROJ = `<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <OutputType>Exe</OutputType>
-    <TargetFramework>net8.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-  </PropertyGroup>
-</Project>
-`;
-
-async function prepareWorkspace(prefix: string): Promise<string> {
+async function prepareWorkspace(prefix: string): Promise<{ id: string; dir: string }> {
   const id = `${prefix}-${uuid()}`;
   const dir = path.join(WORKSPACE, id);
   await fs.mkdir(dir, { recursive: true });
-  return id;
+  return { id, dir };
+}
+
+async function writeRuntimeFiles(dir: string, runtime: RuntimeAdapter, code: string): Promise<void> {
+  const files = runtime.prepareFiles(code);
+  await Promise.all(Object.entries(files).map(([name, content]) =>
+    fs.writeFile(path.join(dir, name), content, "utf-8")
+  ));
 }
 
 async function runSandbox(
   workspaceId: string,
-  cmd: string,
+  image: string,
+  command: string,
   memoryMb: number,
   timeoutSec: number
-): Promise<{ stdout: string; stderr: string; exitCode: number; timedOut: boolean }> {
+): Promise<SandboxResult> {
   const container = await docker.createContainer({
-    Image: SANDBOX_IMAGE,
-    Cmd: ["sh", "-c", cmd],
+    Image: image,
+    Cmd: ["sh", "-c", command],
     HostConfig: {
-      Binds: [`csharp-exec-workspace:/work:rw`],
+      Binds: [`${WORKSPACE_VOLUME}:/work:rw`],
       Memory: memoryMb * 1024 * 1024,
       CpuQuota: 100000,
       NetworkMode: "none",
+      PidsLimit: 64,
+      CapDrop: ["ALL"],
+      SecurityOpt: ["no-new-privileges:true"],
     },
     WorkingDir: `/work/${workspaceId}`,
-    StopTimeout: 5,
+    StopTimeout: 2,
   });
 
-  await container.start();
-
   let timedOut = false;
-  const timeout = setTimeout(async () => {
-    timedOut = true;
+  let outputLimitExceeded = false;
+  let killRequested = false;
+  const kill = async () => {
+    if (killRequested) return;
+    killRequested = true;
     try { await container.kill(); } catch {}
-  }, timeoutSec * 1000);
+  };
 
-  const stream = await container.logs({ follow: true, stdout: true, stderr: true });
-  const output = await streamToString(stream);
-  clearTimeout(timeout);
+  try {
+    await container.start();
+    const stream = await container.logs({ follow: true, stdout: true, stderr: true });
+    const outputPromise = collectDockerLogs(stream, OUTPUT_LIMIT, () => {
+      outputLimitExceeded = true;
+      void kill();
+    });
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      void kill();
+    }, timeoutSec * 1000);
 
-  const inspect = await container.inspect();
-  const exitCode = inspect.State.ExitCode ?? 1;
-
-  try { await container.remove(); } catch {}
-
-  return { stdout: output, stderr: "", exitCode, timedOut };
+    const [output] = await Promise.all([outputPromise, container.wait()]);
+    clearTimeout(timeout);
+    const inspect = await container.inspect();
+    const suffix = outputLimitExceeded ? `\nOutput exceeded ${OUTPUT_LIMIT} byte limit.` : "";
+    return {
+      stdout: output.stdout,
+      stderr: output.stderr + suffix,
+      exitCode: inspect.State.ExitCode ?? 1,
+      timedOut,
+      outputLimitExceeded,
+    };
+  } finally {
+    try { await container.remove({ force: true }); } catch {}
+  }
 }
 
 export async function executeCode(
+  languageId: LanguageId,
+  runtimeId: string,
+  executionMode: ExecutionMode,
   code: string,
-  testCases?: TestCase[],
-  stdin?: string
+  testCases: TestCase[] = [],
+  stdin = ""
 ): Promise<ExecutionResult> {
-  const wsId = await prepareWorkspace("exec");
-  const wsDir = path.join(WORKSPACE, wsId);
+  const runtime = getRuntime(languageId, runtimeId);
+  const workspace = await prepareWorkspace("exec");
 
   try {
-    const wrappedCode =
-      testCases && testCases.length > 0
-        ? wrapCodeWithMain(code, testCases)
-        : wrapCodeWithMainNoTestCases(code);
+    await writeRuntimeFiles(workspace.dir, runtime, code);
+    const validation = await runSandbox(workspace.id, runtime.image, runtime.validateCommand, 512, 30);
+    const validationOutput = [validation.stdout, validation.stderr].filter(Boolean).join("\n").trim();
+    if (validation.exitCode !== 0 || validation.timedOut || validation.outputLimitExceeded) {
+      return {
+        stdout: "",
+        stderr: validationOutput,
+        exitCode: validation.exitCode,
+        compileErrors: validationOutput,
+        compileErrorsList: runtime.parseDiagnostics(validationOutput),
+        timedOut: validation.timedOut,
+      };
+    }
 
-    await fs.writeFile(path.join(wsDir, "Program.csproj"), CSPROJ);
-    await fs.writeFile(path.join(wsDir, "Program.cs"), wrappedCode);
-    await fs.writeFile(path.join(wsDir, "stdin.txt"), stdin || "");
+    if (executionMode === "tests") {
+      const details: { input: string; expected: string; actual: string; passed: boolean }[] = [];
+      let timedOut = false;
+      let exitCode = 0;
+      let stderr = "";
 
-    const runCommand =
-      testCases && testCases.length > 0
-        ? "dotnet bin/Debug/net8.0/Program.dll 2>&1"
-        : "dotnet bin/Debug/net8.0/Program.dll < stdin.txt 2>&1";
+      for (let i = 0; i < testCases.length; i++) {
+        const test = testCases[i];
+        const inputFile = `test-input-${i}.txt`;
+        await fs.writeFile(path.join(workspace.dir, inputFile), test.input, "utf-8");
+        const run = await runSandbox(
+          workspace.id,
+          runtime.image,
+          `${runtime.runCommand} < ${inputFile}`,
+          256,
+          15
+        );
+        const actual = run.stdout.trim();
+        const passed = !run.timedOut && run.exitCode === 0 && actual === test.expectedOutput.trim();
+        details.push({ input: test.input, expected: test.expectedOutput, actual, passed });
+        timedOut ||= run.timedOut;
+        if (run.exitCode !== 0) exitCode = run.exitCode;
+        if (run.stderr) stderr += `${stderr ? "\n" : ""}Test ${i + 1}: ${run.stderr.trim()}`;
+      }
 
-    const result = await runSandbox(
-      wsId,
-      `dotnet build --nologo -v q 2>&1; build_status=$?; echo "___BUILD_STATUS___$build_status"; if [ "$build_status" -eq 0 ]; then echo "___RUN_OUTPUT___"; ${runCommand}; else exit "$build_status"; fi`,
-      512,
-      30
-    );
+      return {
+        stdout: details.map((detail) => detail.actual).join("\n"),
+        stderr,
+        exitCode,
+        compileErrors: "",
+        compileErrorsList: [],
+        testResults: {
+          passed: details.filter((detail) => detail.passed).length,
+          total: testCases.length,
+          details,
+        },
+        timedOut,
+      };
+    }
 
-    const { stdout, stderr, exitCode, timedOut } = result;
-    const buildStatusMatch = stdout.match(/___BUILD_STATUS___(\d+)/);
-    const buildStatus = buildStatusMatch ? Number(buildStatusMatch[1]) : null;
-    const buildStatusMarker = stdout.indexOf("___BUILD_STATUS___");
-    const separator = stdout.indexOf("___RUN_OUTPUT___");
-    const buildOutput = stdout
-      .slice(
-        0,
-        buildStatusMarker >= 0
-          ? buildStatusMarker
-          : separator >= 0
-            ? separator
-            : undefined
-      )
-      .trim();
-    const runOutput = separator >= 0 ? stdout.slice(separator + "___RUN_OUTPUT___".length).trim() : "";
-
-    const hasBuildError = buildStatus !== null && buildStatus !== 0;
-
+    await fs.writeFile(path.join(workspace.dir, "stdin.txt"), stdin, "utf-8");
+    const run = await runSandbox(workspace.id, runtime.image, `${runtime.runCommand} < stdin.txt`, 256, 30);
     return {
-      stdout: hasBuildError ? "" : separator >= 0 ? runOutput : stdout,
-      stderr: hasBuildError ? buildOutput : stderr,
-      exitCode,
-      compileErrors: hasBuildError ? buildOutput : "",
-      compileErrorsList: hasBuildError ? parseBuildErrors(buildOutput) : [],
-      timedOut,
-      testResults:
-        testCases && testCases.length > 0
-          ? parseTestResults(hasBuildError ? "" : runOutput, testCases)
-          : undefined,
+      stdout: run.stdout,
+      stderr: run.stderr,
+      exitCode: run.exitCode,
+      compileErrors: "",
+      compileErrorsList: [],
+      timedOut: run.timedOut,
     };
   } finally {
-    await fs.rm(wsDir, { recursive: true, force: true });
+    await fs.rm(workspace.dir, { recursive: true, force: true });
   }
 }
 
-export async function lintCode(code: string): Promise<{
-  errors: { line: number; column: number; message: string; severity: "error" | "warning" }[];
-  stdout: string;
-  stderr: string;
-}> {
-  const wsId = await prepareWorkspace("lint");
-  const wsDir = path.join(WORKSPACE, wsId);
-
+export async function lintCode(
+  languageId: LanguageId,
+  runtimeId: string,
+  code: string
+): Promise<{ errors: Diagnostic[]; stdout: string; stderr: string }> {
+  const runtime = getRuntime(languageId, runtimeId);
+  const workspace = await prepareWorkspace("lint");
   try {
-    await fs.writeFile(path.join(wsDir, "Program.csproj"), CSPROJ);
-    await fs.writeFile(path.join(wsDir, "Program.cs"), wrapCodeWithMainNoTestCases(code));
-
-    const result = await runSandbox(
-      wsId,
-      "dotnet build --nologo -v q 2>&1",
-      256,
-      15
-    );
-
-    return {
-      errors: parseBuildErrors(result.stdout),
-      stdout: "",
-      stderr: result.stdout,
-    };
+    await writeRuntimeFiles(workspace.dir, runtime, code);
+    const result = await runSandbox(workspace.id, runtime.image, runtime.validateCommand, 256, 15);
+    const output = [result.stdout, result.stderr].filter(Boolean).join("\n").trim();
+    return { errors: runtime.parseDiagnostics(output), stdout: "", stderr: output };
   } finally {
-    await fs.rm(wsDir, { recursive: true, force: true });
+    await fs.rm(workspace.dir, { recursive: true, force: true });
   }
 }
 
-function streamToString(stream: NodeJS.ReadableStream): Promise<string> {
+function collectDockerLogs(
+  stream: NodeJS.ReadableStream,
+  limit: number,
+  onLimit: () => void
+): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    stream.on("data", (chunk: Buffer) => chunks.push(chunk));
-    stream.on("end", () => resolve(demuxDockerLogs(Buffer.concat(chunks))));
+    const stdout: Buffer[] = [];
+    const stderr: Buffer[] = [];
+    let pending = Buffer.alloc(0);
+    let bytes = 0;
+    stream.on("data", (chunk: Buffer) => {
+      if (bytes >= limit) return;
+      pending = Buffer.concat([pending, chunk]);
+      while (pending.length >= 8) {
+        const streamType = pending[0];
+        const size = pending.readUInt32BE(4);
+        if ((streamType !== 1 && streamType !== 2) || pending.length < 8 + size) break;
+        const payload = pending.subarray(8, 8 + size);
+        const remaining = limit - bytes;
+        const accepted = payload.subarray(0, remaining);
+        (streamType === 2 ? stderr : stdout).push(accepted);
+        bytes += accepted.length;
+        pending = pending.subarray(8 + size);
+        if (accepted.length < payload.length || bytes >= limit) {
+          onLimit();
+          break;
+        }
+      }
+    });
+    stream.on("end", () => {
+      if (!stdout.length && !stderr.length && pending.length) {
+        stdout.push(pending.subarray(0, Math.max(0, limit - bytes)));
+      }
+      resolve({ stdout: Buffer.concat(stdout).toString("utf-8"), stderr: Buffer.concat(stderr).toString("utf-8") });
+    });
     stream.on("error", reject);
   });
-}
-
-// Docker multiplexed log format: each frame has an 8-byte header
-// [stream_type(1), padding(3), size(4 big-endian)] followed by payload
-function demuxDockerLogs(buf: Buffer): string {
-  const parts: string[] = [];
-  let offset = 0;
-  while (offset + 8 <= buf.length) {
-    const streamType = buf[offset]; // 1=stdout, 2=stderr
-    const size = buf.readUInt32BE(offset + 4);
-    offset += 8;
-    if (offset + size > buf.length) break;
-    parts.push(buf.slice(offset, offset + size).toString("utf-8"));
-    offset += size;
-  }
-  // Fallback: if no frames were parsed, treat as raw text
-  return parts.length > 0 ? parts.join("") : buf.toString("utf-8");
-}
-
-function parseBuildErrors(
-  output: string
-): { line: number; column: number; message: string; severity: "error" | "warning" }[] {
-  const seen = new Set<string>();
-  const errors: { line: number; column: number; message: string; severity: "error" | "warning" }[] = [];
-  const regex = /Program\.cs\((\d+),(\d+)\):\s+(error|warning)\s+(\w+):\s+(.+)/g;
-  let match;
-
-  while ((match = regex.exec(output)) !== null) {
-    const key = `${match[1]}:${match[2]}:${match[3]}:${match[4]}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-
-    errors.push({
-      line: parseInt(match[1]),
-      column: parseInt(match[2]),
-      message: `${match[4]}: ${match[5]}`,
-      severity: match[3] as "error" | "warning",
-    });
-  }
-
-  return errors;
-}
-
-function parseTestResults(
-  output: string,
-  testCases: TestCase[]
-): {
-  passed: number;
-  total: number;
-  details: { input: string; expected: string; actual: string; passed: boolean }[];
-} {
-  const lines = output.split("\n").filter((l) => l.startsWith("Test "));
-  const details = lines.map((line, i) => {
-    const passed = line.includes("PASS");
-    const inputMatch = line.match(/Input: (.+?) \|/);
-    const expectedMatch = line.match(/Expected: (.+?) \|/);
-    const actualMatch = line.match(/Got: (.+)/);
-
-    return {
-      input: inputMatch?.[1] || testCases[i]?.input || "",
-      expected: expectedMatch?.[1] || testCases[i]?.expectedOutput || "",
-      actual: actualMatch?.[1] || "N/A",
-      passed,
-    };
-  });
-
-  const passed = details.filter((d) => d.passed).length;
-  return { passed, total: testCases.length, details };
 }

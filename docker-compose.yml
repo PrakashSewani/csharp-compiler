@@ -1,3 +1,5 @@
+name: algorithm-desk
+
 services:
   backend:
     build: ./backend
@@ -6,14 +8,22 @@ services:
     volumes:
       - ./files:/app/files
       - ./backend/config.json:/app/config.json
-      - csharp-exec-workspace:/exec-workspace
+      - algorithm-desk-exec-workspace:/exec-workspace
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - FILES_DIR=/app/files
       - EXEC_WORKSPACE=/exec-workspace
-      - SANDBOX_IMAGE=csharp-sandbox
+      - EXEC_WORKSPACE_VOLUME=algorithm-desk-exec-workspace
+      - EXEC_OUTPUT_LIMIT_BYTES=${EXEC_OUTPUT_LIMIT_BYTES:-65536}
+      - DOTNET_SANDBOX_IMAGE=${DOTNET_SANDBOX_IMAGE:-workspace-sandbox-dotnet-8}
+      - PYTHON_SANDBOX_IMAGE=${PYTHON_SANDBOX_IMAGE:-workspace-sandbox-python-3}
+      - JAVA_SANDBOX_IMAGE=${JAVA_SANDBOX_IMAGE:-workspace-sandbox-java-21}
     depends_on:
-      sandbox:
+      sandbox-dotnet:
+        condition: service_healthy
+      sandbox-python:
+        condition: service_healthy
+      sandbox-java:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3001/api/solutions"]
@@ -22,12 +32,36 @@ services:
       retries: 3
       start_period: 10s
 
-  sandbox:
+  sandbox-dotnet:
     build: ./sandbox
-    image: csharp-sandbox
+    image: ${DOTNET_SANDBOX_IMAGE:-workspace-sandbox-dotnet-8}
     command: "tail -f /dev/null"
     healthcheck:
       test: ["CMD", "dotnet", "--version"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  sandbox-python:
+    build:
+      context: ./sandbox
+      dockerfile: Dockerfile.python
+    image: ${PYTHON_SANDBOX_IMAGE:-workspace-sandbox-python-3}
+    command: "tail -f /dev/null"
+    healthcheck:
+      test: ["CMD", "python3", "--version"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  sandbox-java:
+    build:
+      context: ./sandbox
+      dockerfile: Dockerfile.java
+    image: ${JAVA_SANDBOX_IMAGE:-workspace-sandbox-java-21}
+    command: "tail -f /dev/null"
+    healthcheck:
+      test: ["CMD", "java", "--version"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -41,5 +75,5 @@ services:
         condition: service_healthy
 
 volumes:
-  csharp-exec-workspace:
-    name: csharp-exec-workspace
+  algorithm-desk-exec-workspace:
+    name: algorithm-desk-exec-workspace

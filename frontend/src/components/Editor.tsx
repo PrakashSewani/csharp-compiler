@@ -3,7 +3,7 @@ import MonacoEditor, { OnMount, OnChange } from "@monaco-editor/react";
 import type { editor } from "monaco-editor";
 import { Box, Flex, Text } from "@chakra-ui/react";
 import type { LintError } from "../api";
-import { CSHARP_THEME, EDITOR_OPTIONS } from "../monacoConfig";
+import { IDE_THEME, EDITOR_OPTIONS } from "../monacoConfig";
 
 interface EditorProps {
   code: string;
@@ -11,9 +11,11 @@ interface EditorProps {
   onRun: () => void;
   onSave: () => void;
   errors: LintError[];
+  language: string;
+  onNavigateReady?: (navigate: (line: number, column?: number) => void) => void;
 }
 
-export function Editor({ code, onChange, onRun, onSave, errors }: EditorProps) {
+export function Editor({ code, onChange, onRun, onSave, errors, language, onNavigateReady }: EditorProps) {
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   const monacoRef = useRef<any>(null);
   const onRunRef = useRef(onRun);
@@ -29,14 +31,19 @@ export function Editor({ code, onChange, onRun, onSave, errors }: EditorProps) {
     editorRef.current = editor;
     monacoRef.current = monaco;
 
-    monaco.editor.defineTheme("csharp-dark", CSHARP_THEME);
-    monaco.editor.setTheme("csharp-dark");
+    monaco.editor.defineTheme("ide-dark", IDE_THEME);
+    monaco.editor.setTheme("ide-dark");
 
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => onSaveRef.current());
 
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => onRunRef.current());
 
     editor.focus();
+    onNavigateReady?.((line, column = 1) => {
+      editor.revealLineInCenter(line);
+      editor.setPosition({ lineNumber: line, column });
+      editor.focus();
+    });
     setIsLoading(false);
   };
 
@@ -71,9 +78,9 @@ export function Editor({ code, onChange, onRun, onSave, errors }: EditorProps) {
         endColumn: Math.min(err.column + 10, model.getLineMaxColumn(err.line)),
       }));
 
-      monaco.editor.setModelMarkers(model, "csharp-lint", markers);
+      monaco.editor.setModelMarkers(model, "document-diagnostics", markers);
     } catch {
-      monaco.editor.setModelMarkers(model, "csharp-lint", []);
+      monaco.editor.setModelMarkers(model, "document-diagnostics", []);
     }
   }, [errors, code]);
 
@@ -122,8 +129,8 @@ export function Editor({ code, onChange, onRun, onSave, errors }: EditorProps) {
       )}
       <MonacoEditor
         height="100%"
-        defaultLanguage="csharp"
-        theme="csharp-dark"
+        language={language}
+        theme="ide-dark"
         value={code}
         onChange={handleChange}
         onMount={handleMount}

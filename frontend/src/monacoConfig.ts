@@ -1,6 +1,6 @@
 import type { editor } from "monaco-editor";
 
-export const CSHARP_THEME: editor.IStandaloneThemeData = {
+export const IDE_THEME: editor.IStandaloneThemeData = {
   base: "vs-dark",
   inherit: true,
   rules: [

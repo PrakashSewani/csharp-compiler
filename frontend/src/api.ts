@@ -1,11 +1,64 @@
 const API_BASE = "/api";
 
+export type LanguageId = "csharp" | "python" | "java";
+export type ExecutionMode = "stdin" | "tests";
+
+export interface RuntimeOption {
+  id: string;
+  label: string;
+  available: boolean;
+  isDefault?: boolean;
+}
+
+export interface LanguageCapability {
+  id: LanguageId;
+  label: string;
+  monacoLanguage: string;
+  extension: string;
+  available: boolean;
+  runtimes: RuntimeOption[];
+}
+
+interface LegacyRuntimeCapability {
+  languageId: LanguageId;
+  runtimeId: string;
+  displayName: string;
+  sourceFileName?: string;
+}
+
+export interface RuntimeCapabilities {
+  languages: LanguageCapability[];
+  limits?: Record<string, unknown>;
+}
+
+export const LEGACY_CAPABILITIES: RuntimeCapabilities = {
+  languages: [{
+    id: "csharp",
+    label: "C#",
+    monacoLanguage: "csharp",
+    extension: ".cs",
+    available: true,
+    runtimes: [{ id: "dotnet-8", label: ".NET 8", available: true, isDefault: true }],
+  }],
+};
+
+async function errorMessage(res: Response): Promise<string> {
+  const body = await res.text().catch(() => "");
+  if (!body) return `Request failed: ${res.status}`;
+  try {
+    const parsed = JSON.parse(body);
+    return parsed.message || parsed.error || parsed.detail || body;
+  } catch {
+    return body;
+  }
+}
+
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init);
   if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(body || `Request failed: ${res.status}`);
+    throw new Error(await errorMessage(res));
   }
+  if (res.status === 204) return undefined as T;
   return res.json();
 }
 
@@ -20,11 +73,23 @@ export interface FileEntry {
   testCases: TestCase[];
   createdAt: string;
   updatedAt: string;
+  schemaVersion: number;
+  languageId: LanguageId;
+  runtimeId: string;
+  sourceFileName: string;
+  executionMode: ExecutionMode;
+  scratchStdin: string;
 }
 
 export interface FileListItem {
   name: string;
   updatedAt: string;
+  schemaVersion: number;
+  languageId: LanguageId;
+  runtimeId: string;
+  sourceFileName: string;
+  executionMode: ExecutionMode;
+  scratchStdin: string;
 }
 
 export interface SolutionFolder {
@@ -54,10 +119,57 @@ export interface ExecutionResult {
   timedOut: boolean;
 }
 
+function normalizeMetadata<T extends { name?: string }>(entry: T): T & Pick<FileEntry, "schemaVersion" | "languageId" | "runtimeId" | "sourceFileName" | "executionMode" | "scratchStdin"> {
+  return {
+    ...entry,
+    schemaVersion: Number((entry as any).schemaVersion) || 1,
+    languageId: (["csharp", "python", "java"].includes((entry as any).languageId) ? (entry as any).languageId : "csharp") as LanguageId,
+    runtimeId: (entry as any).runtimeId || "dotnet-8",
+    sourceFileName: (entry as any).sourceFileName || "Main.cs",
+    executionMode: (entry as any).executionMode === "tests" ? "tests" : "stdin",
+    scratchStdin: (entry as any).scratchStdin || "",
+  };
+}
+
+export async function getRuntimes(): Promise<RuntimeCapabilities> {
+  const payload = await request<RuntimeCapabilities | LanguageCapability[] | LegacyRuntimeCapability[]>(`${API_BASE}/runtimes`);
+  const capabilities = Array.isArray(payload)
+    ? "languageId" in (payload[0] || {})
+      ? {
+          languages: (["csharp", "python", "java"] as LanguageId[]).flatMap((id) => {
+            const runtimes = (payload as LegacyRuntimeCapability[]).filter((item) => item.languageId === id);
+            if (!runtimes.length) return [];
+            const defaults = {
+              csharp: { label: "C#", monacoLanguage: "csharp", extension: ".cs" },
+              python: { label: "Python", monacoLanguage: "python", extension: ".py" },
+              java: { label: "Java", monacoLanguage: "java", extension: ".java" },
+            }[id];
+            return [{
+              id,
+              ...defaults,
+              available: true,
+              runtimes: runtimes.map((runtime, index) => ({
+                id: runtime.runtimeId,
+                label: runtime.displayName,
+                available: true,
+                isDefault: index === 0,
+              })),
+            }];
+          }),
+        }
+      : { languages: payload as LanguageCapability[] }
+    : payload;
+  return capabilities?.languages?.length ? capabilities : LEGACY_CAPABILITIES;
+}
+
 // --- Solution/Folder API ---
 
 export async function listSolutions(): Promise<SolutionFolder[]> {
-  return request<SolutionFolder[]>(`${API_BASE}/solutions`);
+  const solutions = await request<SolutionFolder[]>(`${API_BASE}/solutions`);
+  return solutions.map((solution) => ({
+    ...solution,
+    files: (solution.files || []).map(normalizeMetadata),
+  }));
 }
 
 export async function createSolution(name: string): Promise<void> {
@@ -85,29 +197,30 @@ export async function renameSolution(name: string, newName: string): Promise<voi
 // --- File API (within solutions) ---
 
 export async function listFilesInSolution(solution: string): Promise<FileListItem[]> {
-  return request<FileListItem[]>(
+  const files = await request<FileListItem[]>(
     `${API_BASE}/solutions/${encodeURIComponent(solution)}/files`
   );
+  return files.map(normalizeMetadata);
 }
 
 export async function getFile(solution: string, file: string): Promise<FileEntry> {
-  return request<FileEntry>(
+  const entry = await request<FileEntry>(
     `${API_BASE}/solutions/${encodeURIComponent(solution)}/files/${encodeURIComponent(file)}`
   );
+  return { ...normalizeMetadata({ ...entry, name: entry.name || file }), testCases: entry.testCases || [] } as FileEntry;
 }
 
 export async function saveFile(
   solution: string,
   file: string,
-  code: string,
-  testCases: TestCase[] = []
+  document: Pick<FileEntry, "schemaVersion" | "languageId" | "runtimeId" | "sourceFileName" | "executionMode" | "scratchStdin" | "code" | "testCases">
 ): Promise<void> {
   await request<void>(
     `${API_BASE}/solutions/${encodeURIComponent(solution)}/files/${encodeURIComponent(file)}`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code, testCases }),
+      body: JSON.stringify(document),
     }
   );
 }
@@ -124,18 +237,25 @@ export async function deleteFile(solution: string, file: string): Promise<void> 
 // --- Execution API ---
 
 export async function executeCode(
-  code: string,
-  testCases?: TestCase[],
-  stdin?: string
+  payload: {
+    languageId: LanguageId;
+    runtimeId: string;
+    executionMode: ExecutionMode;
+    code: string;
+    testCases?: TestCase[];
+    stdin?: string;
+  }
 ): Promise<ExecutionResult> {
   return request<ExecutionResult>(`${API_BASE}/execute`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ code, testCases, stdin }),
+    body: JSON.stringify(payload),
   });
 }
 
 export async function lintCode(
+  languageId: LanguageId,
+  runtimeId: string,
   code: string
 ): Promise<{ errors: LintError[]; stdout: string; stderr: string }> {
   return request<{ errors: LintError[]; stdout: string; stderr: string }>(
@@ -143,7 +263,7 @@ export async function lintCode(
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code }),
+      body: JSON.stringify({ languageId, runtimeId, code }),
     }
   );
 }

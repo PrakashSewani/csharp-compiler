@@ -30,11 +30,14 @@ interface OutputPanelProps {
   onStdinChange: (stdin: string) => void;
   errors: LintError[];
   onCollapse: () => void;
+  runtimeLabel: string;
+  languageLabel: string;
+  onNavigateDiagnostic?: (line: number, column?: number) => void;
 }
 
 type Tab = "results" | "problems" | "stdin";
 
-export function OutputPanel({ output, isRunning, stdin, onStdinChange, errors, onCollapse }: OutputPanelProps) {
+export function OutputPanel({ output, isRunning, stdin, onStdinChange, errors, onCollapse, runtimeLabel, languageLabel, onNavigateDiagnostic }: OutputPanelProps) {
   const [activeTab, setActiveTab] = useState<Tab>("results");
   const [copied, setCopied] = useState(false);
 
@@ -120,7 +123,7 @@ export function OutputPanel({ output, isRunning, stdin, onStdinChange, errors, o
                 <Loader2 size={18} className="animate-spin" color="currentColor" />
                 <Box>
                   <Text fontSize="sm" fontWeight="700" color="text.primary">Compiling and running</Text>
-                  <Text fontSize="xs" color="text.muted">Executing in an isolated .NET sandbox.</Text>
+                  <Text fontSize="xs" color="text.muted">Executing {languageLabel} with {runtimeLabel} in an isolated sandbox.</Text>
                 </Box>
               </Flex>
             ) : !output ? (
@@ -178,7 +181,7 @@ export function OutputPanel({ output, isRunning, stdin, onStdinChange, errors, o
             {errors.length === 0 ? (
               <Flex direction="column" alignItems="center" justifyContent="center" minH="120px" textAlign="center">
                 <CheckCircle2 size={25} color="#22c55e" opacity={0.35} />
-                <Text mt={2} fontSize="sm" fontWeight="700" color="text.secondary">No compiler problems</Text>
+                <Text mt={2} fontSize="sm" fontWeight="700" color="text.secondary">No diagnostics</Text>
                 <Text mt={1} fontSize="xs" color="text.muted">Diagnostics will appear here as you work.</Text>
               </Flex>
             ) : (
@@ -194,9 +197,7 @@ export function OutputPanel({ output, isRunning, stdin, onStdinChange, errors, o
                     textAlign="left"
                     borderRadius="md"
                     _hover={{ bg: "bg.surface" }}
-                    onClick={() => {
-                      window.dispatchEvent(new CustomEvent("navigate-to-line", { detail: { line: error.line } }));
-                    }}
+                    onClick={() => onNavigateDiagnostic?.(error.line, error.column)}
                   >
                     {error.severity === "error" ? <XCircle size={14} color="#ef4444" /> : <AlertTriangle size={14} color="#facc15" />}
                     <Text fontSize="xs" fontFamily="mono" color="text.muted">{error.line}:{error.column}</Text>
@@ -213,7 +214,7 @@ export function OutputPanel({ output, isRunning, stdin, onStdinChange, errors, o
             <Text id="program-input-label" display="block" mb={1.5} fontSize="xs" fontWeight="700" color="text.secondary">
               Console input
             </Text>
-            <Text mb={3} fontSize="xs" color="text.muted">This value is piped to Console.ReadLine() when the program runs.</Text>
+            <Text mb={3} fontSize="xs" color="text.muted">This text is piped to the program's standard input when it runs.</Text>
             <Textarea
               id="program-input"
               aria-labelledby="program-input-label"
