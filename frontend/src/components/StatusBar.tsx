@@ -1,58 +1,41 @@
-import { Flex, Text } from "@chakra-ui/react";
+import { CircleAlert, Cloud, FlaskConical } from "lucide-react";
+import { Flex, HStack, Text } from "@chakra-ui/react";
 
 interface StatusBarProps {
-  currentFile: string | null;
   isSaving: boolean;
   errorCount: number;
+  testCount: number;
 }
 
-export function StatusBar({ currentFile, isSaving, errorCount }: StatusBarProps) {
+export function StatusBar({ isSaving, errorCount, testCount }: StatusBarProps) {
   return (
     <Flex
       alignItems="center"
       justifyContent="space-between"
-      px={4}
-      h={6}
+      px={5}
+      h={8}
       flexShrink={0}
       userSelect="none"
-      bg="bg.elevated"
+      bg="bg.panel"
       borderTop="1px solid"
       borderColor="border.subtle"
+      aria-live="polite"
     >
-      <Flex alignItems="center" gap={3}>
-        {currentFile ? (
-          <Text fontSize="2xs" fontFamily="mono" color="text.secondary">
-            {currentFile}.cs
-          </Text>
-        ) : (
-          <Text fontSize="2xs" color="text.muted">
-            No file open
-          </Text>
-        )}
-      </Flex>
+      <HStack gap={2.5} color={isSaving ? "accent.yellow" : "text.muted"}>
+        <Cloud size={12} />
+        <Text fontSize="xs">{isSaving ? "Saving changes" : "All changes saved"}</Text>
+      </HStack>
 
-      <Flex alignItems="center" gap={3}>
-        {isSaving && (
-          <Text
-            fontSize="2xs"
-            color="text.muted"
-            animation="pulse-glow 2s ease-in-out infinite"
-          >
-            Saving...
-          </Text>
-        )}
-        {errorCount > 0 && (
-          <Text fontSize="2xs" color="accent.red">
-            {errorCount} problem{errorCount !== 1 ? "s" : ""}
-          </Text>
-        )}
-        <Text fontSize="2xs" color="text.muted">
-          C#
-        </Text>
-        <Text fontSize="2xs" color="text.muted">
-          UTF-8
-        </Text>
-      </Flex>
+      <HStack gap={6}>
+        <HStack gap={2} color={errorCount > 0 ? "accent.red" : "text.muted"}>
+          <CircleAlert size={12} />
+          <Text fontSize="xs">{errorCount} problem{errorCount === 1 ? "" : "s"}</Text>
+        </HStack>
+        <HStack gap={2} color="text.muted" display={{ base: "none", sm: "flex" }}>
+          <FlaskConical size={12} />
+          <Text fontSize="xs">{testCount} case{testCount === 1 ? "" : "s"}</Text>
+        </HStack>
+      </HStack>
     </Flex>
   );
 }

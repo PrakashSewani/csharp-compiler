@@ -84,31 +84,31 @@ const config = defineConfig({
     semanticTokens: {
       colors: {
         "bg.app": {
-          value: { _dark: "#070a0e", _light: "#ffffff" },
+          value: { _dark: "#0a0b0d", _light: "#ffffff" },
         },
         "bg.panel": {
-          value: { _dark: "#0b1015", _light: "#f8fafc" },
+          value: { _dark: "#0f1114", _light: "#f8fafc" },
         },
         "bg.surface": {
-          value: { _dark: "#0e1319", _light: "#f1f5f9" },
+          value: { _dark: "#15181c", _light: "#f1f5f9" },
         },
         "bg.elevated": {
-          value: { _dark: "#131924", _light: "#e2e8f0" },
+          value: { _dark: "#1b1f24", _light: "#e2e8f0" },
         },
         "bg.hover": {
-          value: { _dark: "#182030", _light: "#cbd5e1" },
+          value: { _dark: "#22272e", _light: "#cbd5e1" },
         },
         "bg.active": {
-          value: { _dark: "#1f2937", _light: "#94a3b8" },
+          value: { _dark: "#292f36", _light: "#94a3b8" },
         },
         "border.subtle": {
-          value: { _dark: "#182030", _light: "#e2e8f0" },
+          value: { _dark: "#252a31", _light: "#e2e8f0" },
         },
         "border.default": {
-          value: { _dark: "#1f2937", _light: "#cbd5e1" },
+          value: { _dark: "#323840", _light: "#cbd5e1" },
         },
         "border.strong": {
-          value: { _dark: "#374151", _light: "#94a3b8" },
+          value: { _dark: "#454c55", _light: "#94a3b8" },
         },
         "text.primary": {
           value: { _dark: "#f0f4f8", _light: "#0f172a" },
@@ -117,13 +117,13 @@ const config = defineConfig({
           value: { _dark: "#c9d1db", _light: "#475569" },
         },
         "text.muted": {
-          value: { _dark: "#546478", _light: "#94a3b8" },
+          value: { _dark: "#718096", _light: "#64748b" },
         },
         "text.accent": {
-          value: { _dark: "#93c5fd", _light: "#2563eb" },
+          value: { _dark: "#a8c7fa", _light: "#2563eb" },
         },
         "accent.blue": {
-          value: { _dark: "#3b82f6", _light: "#2563eb" },
+          value: { _dark: "#5b8def", _light: "#2563eb" },
         },
         "accent.green": {
           value: { _dark: "#22c55e", _light: "#16a34a" },
@@ -149,15 +149,15 @@ const config = defineConfig({
       bg: "bg.app",
       color: "text.primary",
       overflow: "hidden",
-      height: "100vh",
+      height: "100dvh",
       lineHeight: 1.5,
     },
     "#root": {
-      height: "100vh",
+      height: "100dvh",
     },
     "*:focus-visible": {
       outline: "2px solid accent.blue",
-      outlineOffset: "-2px",
+      outlineOffset: "2px",
       borderRadius: "4px",
     },
   },

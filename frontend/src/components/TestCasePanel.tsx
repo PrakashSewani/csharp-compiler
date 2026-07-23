@@ -1,13 +1,5 @@
-import { useState } from "react";
-import {
-  Plus,
-  Trash2,
-  ChevronDown,
-  ChevronRight,
-  Copy,
-  ChevronUp,
-  ChevronDown as ChevronDownIcon,
-} from "lucide-react";
+import { useEffect, useState } from "react";
+import { Copy, FlaskConical, PanelRightClose, Play, Plus, Trash2 } from "lucide-react";
 import {
   Box,
   Flex,
@@ -15,7 +7,7 @@ import {
   VStack,
   Text,
   IconButton,
-  Badge,
+  Button,
   Textarea,
 } from "@chakra-ui/react";
 import type { TestCase } from "../api";
@@ -24,339 +16,206 @@ interface TestCasePanelProps {
   testCases: TestCase[];
   onChange: (testCases: TestCase[]) => void;
   onRunAll: () => void;
+  onCollapse: () => void;
 }
 
-export function TestCasePanel({ testCases, onChange, onRunAll }: TestCasePanelProps) {
-  const [expanded, setExpanded] = useState<number | null>(0);
+export function TestCasePanel({ testCases, onChange, onRunAll, onCollapse }: TestCasePanelProps) {
+  const [selectedIndex, setSelectedIndex] = useState(0);
+
+  useEffect(() => {
+    if (testCases.length === 0) setSelectedIndex(0);
+    else if (selectedIndex >= testCases.length) setSelectedIndex(testCases.length - 1);
+  }, [selectedIndex, testCases.length]);
 
   const addTestCase = () => {
-    const newCases = [...testCases, { input: "", expectedOutput: "" }];
-    onChange(newCases);
-    setExpanded(newCases.length - 1);
+    const next = [...testCases, { input: "", expectedOutput: "" }];
+    onChange(next);
+    setSelectedIndex(next.length - 1);
   };
 
-  const duplicateTestCase = (index: number) => {
-    const original = testCases[index];
-    const newCases = [
-      ...testCases.slice(0, index + 1),
-      { ...original },
-      ...testCases.slice(index + 1),
+  const updateTestCase = (field: "input" | "expectedOutput", value: string) => {
+    const next = [...testCases];
+    next[selectedIndex] = { ...next[selectedIndex], [field]: value };
+    onChange(next);
+  };
+
+  const duplicateTestCase = () => {
+    if (!testCases[selectedIndex]) return;
+    const next = [
+      ...testCases.slice(0, selectedIndex + 1),
+      { ...testCases[selectedIndex] },
+      ...testCases.slice(selectedIndex + 1),
     ];
-    onChange(newCases);
-    setExpanded(index + 1);
+    onChange(next);
+    setSelectedIndex(selectedIndex + 1);
   };
 
-  const removeTestCase = (index: number) => {
-    const newCases = testCases.filter((_, i) => i !== index);
-    onChange(newCases);
-    if (expanded === index) setExpanded(null);
-    else if (expanded !== null && expanded > index) setExpanded(expanded - 1);
+  const removeTestCase = () => {
+    onChange(testCases.filter((_, index) => index !== selectedIndex));
   };
 
-  const moveTestCase = (index: number, direction: "up" | "down") => {
-    const newIndex = direction === "up" ? index - 1 : index + 1;
-    if (newIndex < 0 || newIndex >= testCases.length) return;
-    const newCases = [...testCases];
-    [newCases[index], newCases[newIndex]] = [newCases[newIndex], newCases[index]];
-    onChange(newCases);
-    setExpanded(newIndex);
-  };
-
-  const updateTestCase = (
-    index: number,
-    field: "input" | "expectedOutput",
-    value: string
-  ) => {
-    const newCases = [...testCases];
-    newCases[index] = { ...newCases[index], [field]: value };
-    onChange(newCases);
-  };
+  const selected = testCases[selectedIndex];
 
   return (
-    <Box
-      h="100%"
-      display="flex"
-      flexDirection="column"
-      overflow="hidden"
-      bg="bg.panel"
-      animation="panel-slide-in-right 200ms ease-out"
-    >
-      {/* Header */}
+    <Box h="100%" display="flex" flexDirection="column" overflow="hidden" bg="bg.panel">
       <Flex
         alignItems="center"
         justifyContent="space-between"
+        gap={4}
         px={4}
-        pt={4}
-        pb={3}
+        h="56px"
+        minH="56px"
         flexShrink={0}
         borderBottom="1px solid"
         borderColor="border.subtle"
       >
-        <HStack gap={2}>
-          <Text
-            fontSize="2xs"
-            fontWeight="bold"
-            textTransform="uppercase"
-            letterSpacing="widest"
-            color="text.muted"
-          >
-            Test Cases
+        <HStack gap={2.5}>
+          <FlaskConical size={17} />
+          <Text fontSize="sm" fontWeight="700" color="text.primary">
+            Cases
           </Text>
-          {testCases.length > 0 && (
-            <Badge size="sm" colorPalette="purple" variant="subtle">
-              {testCases.length}
-            </Badge>
-          )}
+          <Text fontSize="xs" color="text.muted">
+            {testCases.length}
+          </Text>
         </HStack>
-        <IconButton
-          aria-label="Add test case"
-          size="xs"
-          variant="outline"
-          colorPalette="purple"
-          onClick={addTestCase}
-        >
-          <Plus size={13} />
-        </IconButton>
+        <HStack gap={2}>
+          <IconButton aria-label="Collapse cases" title="Collapse cases" size="md" variant="ghost" onClick={onCollapse}>
+            <PanelRightClose size={16} />
+          </IconButton>
+          <IconButton aria-label="Add case" title="Add case" size="md" variant="subtle" colorPalette="blue" onClick={addTestCase}>
+            <Plus size={16} />
+          </IconButton>
+          <Button
+            size="md"
+            px={4}
+            colorPalette="blue"
+            onClick={onRunAll}
+            disabled={testCases.length === 0}
+          >
+            <Play size={15} fill="currentColor" />
+            Run all
+          </Button>
+        </HStack>
       </Flex>
 
-      {/* Test case list */}
-      <Box flex={1} overflowY="auto" p={3}>
-        {testCases.length === 0 ? (
-          <Flex
-            direction="column"
-            alignItems="center"
-            justifyContent="center"
-            h="full"
-            px={4}
-            py={8}
-          >
-            <Box
-              w={12}
-              h={12}
-              borderRadius="xl"
-              display="flex"
-              alignItems="center"
-              justifyContent="center"
-              mb={3}
-              bg="bg.surface"
-            >
-              <Plus size={24} color="#546478" opacity={0.4} />
-            </Box>
-            <Text
-              fontSize="xs"
-              textAlign="center"
-              lineHeight="relaxed"
-              color="text.muted"
-            >
-              No test cases yet
-            </Text>
-            <Text
-              fontSize="2xs"
-              textAlign="center"
-              mt={1}
-              color="text.muted"
-            >
-              Your{" "}
-              <Text as="span" fontFamily="mono" fontWeight="semibold" color="accent.purple">
-                Solution.Solve()
-              </Text>{" "}
-              method will be called with each input
-            </Text>
-            <Text
-              as="button"
-              fontSize="xs"
-              fontWeight="medium"
-              mt={3}
-              color="accent.purple"
-              onClick={addTestCase}
-              _hover={{ textDecoration: "underline" }}
-            >
-              Add your first test case
-            </Text>
-          </Flex>
-        ) : (
-          <VStack gap={2} align="stretch">
-            {testCases.map((tc, i) => {
-              const isOpen = expanded === i;
-              const hasContent = tc.input || tc.expectedOutput;
-
-              return (
-                <Box
-                  key={i}
-                  borderRadius="lg"
-                  overflow="hidden"
-                  transition="all 150ms"
-                  border="1px solid"
-                  borderColor={isOpen ? "border.strong" : "border.subtle"}
-                  bg={isOpen ? "bg.surface" : "bg.elevated"}
-                >
-                  {/* Accordion header */}
-                  <Flex
-                    alignItems="center"
-                    gap={2}
-                    px={3}
-                    py={2.5}
-                    cursor="pointer"
-                    userSelect="none"
-                    borderBottom={isOpen ? "1px solid" : "none"}
-                    borderColor="border.subtle"
-                    onClick={() => setExpanded(isOpen ? null : i)}
-                    _hover={{ bg: "bg.hover" }}
-                  >
-                    <Box color="text.muted">
-                      {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                    </Box>
-                    <Text
-                      fontSize="xs"
-                      fontWeight="semibold"
-                      flex={1}
-                      color="text.primary"
-                    >
-                      Test {i + 1}
-                    </Text>
-                    {hasContent && !isOpen && (
-                      <Text
-                        fontSize="2xs"
-                        fontFamily="mono"
-                        px={1.5}
-                        py={0.5}
-                        borderRadius="md"
-                        maxW="120px"
-                        truncate
-                        bg="bg.hover"
-                        color="text.muted"
-                      >
-                        {tc.input || "(empty)"}
-                      </Text>
-                    )}
-                    <HStack gap={0.5}>
-                      <IconButton
-                        aria-label="Move up"
-                        size="2xs"
-                        variant="ghost"
-                        disabled={i === 0}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          moveTestCase(i, "up");
-                        }}
-                      >
-                        <ChevronUp size={11} />
-                      </IconButton>
-                      <IconButton
-                        aria-label="Move down"
-                        size="2xs"
-                        variant="ghost"
-                        disabled={i === testCases.length - 1}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          moveTestCase(i, "down");
-                        }}
-                      >
-                        <ChevronDownIcon size={11} />
-                      </IconButton>
-                      <IconButton
-                        aria-label="Duplicate"
-                        size="2xs"
-                        variant="ghost"
-                        colorPalette="purple"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          duplicateTestCase(i);
-                        }}
-                      >
-                        <Copy size={11} />
-                      </IconButton>
-                      <IconButton
-                        aria-label="Delete"
-                        size="2xs"
-                        variant="ghost"
-                        colorPalette="red"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          removeTestCase(i);
-                        }}
-                      >
-                        <Trash2 size={11} />
-                      </IconButton>
-                    </HStack>
-                  </Flex>
-
-                  {/* Accordion content */}
-                  {isOpen && (
-                    <Box p={3}>
-                      <VStack gap={3} align="stretch">
-                        <Box>
-                          <Text
-                            fontSize="2xs"
-                            fontWeight="bold"
-                            textTransform="uppercase"
-                            letterSpacing="wider"
-                            mb={1.5}
-                            color="text.muted"
-                          >
-                            Input
-                          </Text>
-                          <Textarea
-                            size="sm"
-                            value={tc.input}
-                            onChange={(e) => updateTestCase(i, "input", e.target.value)}
-                            placeholder="e.g. [2,7,11,15] 9"
-                            h={20}
-                            fontFamily="mono"
-                            resize="none"
-                          />
-                        </Box>
-                        <Box>
-                          <Text
-                            fontSize="2xs"
-                            fontWeight="bold"
-                            textTransform="uppercase"
-                            letterSpacing="wider"
-                            mb={1.5}
-                            color="text.muted"
-                          >
-                            Expected Output
-                          </Text>
-                          <Textarea
-                            size="sm"
-                            value={tc.expectedOutput}
-                            onChange={(e) =>
-                              updateTestCase(i, "expectedOutput", e.target.value)
-                            }
-                            placeholder="e.g. [0,1]"
-                            h={20}
-                            fontFamily="mono"
-                            resize="none"
-                          />
-                        </Box>
-                      </VStack>
-                    </Box>
-                  )}
-                </Box>
-              );
-            })}
-          </VStack>
-        )}
-      </Box>
-
-      {/* Footer hint */}
-      {testCases.length > 0 && (
-        <Box
-          px={4}
-          py={3}
-          flexShrink={0}
-          borderTop="1px solid"
-          borderColor="border.subtle"
-          bg="bg.panel"
-        >
-          <Text fontSize="2xs" lineHeight="relaxed" color="text.muted">
-            Implement{" "}
-            <Text as="span" fontFamily="mono" fontWeight="semibold" color="accent.purple">
-              Solution.Solve(string input)
-            </Text>{" "}
-            and return a value. Compared as string.
+      {testCases.length === 0 ? (
+        <Flex direction="column" alignItems="center" justifyContent="center" flex={1} px={7} textAlign="center">
+          <FlaskConical size={30} color="currentColor" opacity={0.2} />
+          <Text mt={3} fontSize="sm" fontWeight="700" color="text.secondary">
+            Add a sample case
           </Text>
-        </Box>
+          <Text mt={1} fontSize="xs" lineHeight="1.6" color="text.muted">
+            Each input is passed to <Box as="span" fontFamily="mono">Solution.Solve</Box> and compared with the expected value.
+          </Text>
+          <Button mt={4} size="sm" variant="subtle" colorPalette="blue" onClick={addTestCase}>
+            <Plus size={14} />
+            Add first case
+          </Button>
+        </Flex>
+      ) : (
+        <>
+          <HStack
+            gap={2}
+            px={4}
+            py={3}
+            flexShrink={0}
+            overflowX="auto"
+            borderBottom="1px solid"
+            borderColor="border.subtle"
+          >
+            {testCases.map((testCase, index) => (
+              <Button
+                key={index}
+                size="sm"
+                minW={10}
+                variant={selectedIndex === index ? "subtle" : "ghost"}
+                colorPalette={selectedIndex === index ? "blue" : "gray"}
+                onClick={() => setSelectedIndex(index)}
+                flexShrink={0}
+                aria-pressed={selectedIndex === index}
+              >
+                <Box
+                  w={1.5}
+                  h={1.5}
+                  borderRadius="full"
+                  bg={testCase.input || testCase.expectedOutput ? "accent.blue" : "text.muted"}
+                />
+                {index + 1}
+              </Button>
+            ))}
+          </HStack>
+
+          {selected && (
+            <Box flex={1} overflowY="auto" p={4}>
+              <Flex alignItems="center" justifyContent="space-between" gap={4} mb={5}>
+                <Box>
+                  <Text fontSize="sm" fontWeight="700" color="text.primary">
+                    Case {selectedIndex + 1}
+                  </Text>
+                  <Text fontSize="xs" color="text.muted">
+                    Define the sample input and expected result.
+                  </Text>
+                </Box>
+                <HStack gap={2}>
+                  <IconButton
+                    aria-label="Duplicate selected case"
+                    title="Duplicate case"
+                    size="md"
+                    variant="subtle"
+                    onClick={duplicateTestCase}
+                  >
+                    <Copy size={15} />
+                  </IconButton>
+                  <IconButton
+                    aria-label="Delete selected case"
+                    title="Delete case"
+                    size="md"
+                    variant="ghost"
+                    colorPalette="red"
+                    onClick={removeTestCase}
+                  >
+                    <Trash2 size={15} />
+                  </IconButton>
+                </HStack>
+              </Flex>
+
+              <VStack gap={5} align="stretch">
+                <Box>
+                  <Text id="case-input-label" display="block" mb={1.5} fontSize="xs" fontWeight="700" color="text.secondary">
+                    Input
+                  </Text>
+                  <Textarea
+                    id="case-input"
+                    aria-labelledby="case-input-label"
+                    value={selected.input}
+                    onChange={(event) => updateTestCase("input", event.target.value)}
+                    placeholder="Example input"
+                    minH="128px"
+                    fontFamily="mono"
+                    fontSize="sm"
+                    resize="vertical"
+                  />
+                </Box>
+                <Box>
+                  <Text id="case-output-label" display="block" mb={1.5} fontSize="xs" fontWeight="700" color="text.secondary">
+                    Expected output
+                  </Text>
+                  <Textarea
+                    id="case-output"
+                    aria-labelledby="case-output-label"
+                    value={selected.expectedOutput}
+                    onChange={(event) => updateTestCase("expectedOutput", event.target.value)}
+                    placeholder="Expected result"
+                    minH="128px"
+                    fontFamily="mono"
+                    fontSize="sm"
+                    resize="vertical"
+                  />
+                </Box>
+              </VStack>
+            </Box>
+          )}
+        </>
       )}
     </Box>
   );

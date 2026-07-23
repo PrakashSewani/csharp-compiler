@@ -8,13 +8,23 @@ import { CSHARP_THEME, EDITOR_OPTIONS } from "../monacoConfig";
 interface EditorProps {
   code: string;
   onChange: (code: string) => void;
+  onRun: () => void;
+  onSave: () => void;
   errors: LintError[];
 }
 
-export function Editor({ code, onChange, errors }: EditorProps) {
+export function Editor({ code, onChange, onRun, onSave, errors }: EditorProps) {
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   const monacoRef = useRef<any>(null);
+  const onRunRef = useRef(onRun);
+  const onSaveRef = useRef(onSave);
   const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    onRunRef.current = onRun;
+    onSaveRef.current = onSave;
+  }, [onRun, onSave]);
+
   const handleMount: OnMount = (editor, monaco) => {
     editorRef.current = editor;
     monacoRef.current = monaco;
@@ -22,11 +32,9 @@ export function Editor({ code, onChange, errors }: EditorProps) {
     monaco.editor.defineTheme("csharp-dark", CSHARP_THEME);
     monaco.editor.setTheme("csharp-dark");
 
-    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {});
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => onSaveRef.current());
 
-    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
-      window.dispatchEvent(new CustomEvent("run-code"));
-    });
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => onRunRef.current());
 
     editor.focus();
     setIsLoading(false);
@@ -86,7 +94,7 @@ export function Editor({ code, onChange, errors }: EditorProps) {
   }, []);
 
   return (
-    <Box h="100%" w="100%" position="relative" style={{ background: "#070a0e" }}>
+    <Box h="100%" w="100%" position="relative" bg="bg.app">
       {isLoading && (
         <Box
           position="absolute"
@@ -95,7 +103,7 @@ export function Editor({ code, onChange, errors }: EditorProps) {
           alignItems="center"
           justifyContent="center"
           zIndex={10}
-          style={{ background: "#070a0e" }}
+          bg="bg.app"
         >
           <Flex alignItems="center" gap={2}>
             <Box

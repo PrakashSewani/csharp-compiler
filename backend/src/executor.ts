@@ -62,7 +62,7 @@ ${testCases
   )
   .join("\n")}
 
-        Console.WriteLine($"=== Results: {{passed}}/{{total}} tests passed ===");
+        Console.WriteLine($"=== Results: {passed}/{total} tests passed ===");
         foreach (var r in results) Console.WriteLine(r);
     }
 }
@@ -194,24 +194,42 @@ export async function executeCode(
 
     await fs.writeFile(path.join(wsDir, "Program.csproj"), CSPROJ);
     await fs.writeFile(path.join(wsDir, "Program.cs"), wrappedCode);
+    await fs.writeFile(path.join(wsDir, "stdin.txt"), stdin || "");
+
+    const runCommand =
+      testCases && testCases.length > 0
+        ? "dotnet bin/Debug/net8.0/Program.dll 2>&1"
+        : "dotnet bin/Debug/net8.0/Program.dll < stdin.txt 2>&1";
 
     const result = await runSandbox(
       wsId,
-      "dotnet build --nologo -v q 2>&1 && echo '___RUN_OUTPUT___' && dotnet run --no-build 2>&1",
+      `dotnet build --nologo -v q 2>&1; build_status=$?; echo "___BUILD_STATUS___$build_status"; if [ "$build_status" -eq 0 ]; then echo "___RUN_OUTPUT___"; ${runCommand}; else exit "$build_status"; fi`,
       512,
       30
     );
 
     const { stdout, stderr, exitCode, timedOut } = result;
+    const buildStatusMatch = stdout.match(/___BUILD_STATUS___(\d+)/);
+    const buildStatus = buildStatusMatch ? Number(buildStatusMatch[1]) : null;
+    const buildStatusMarker = stdout.indexOf("___BUILD_STATUS___");
     const separator = stdout.indexOf("___RUN_OUTPUT___");
-    const buildOutput = separator >= 0 ? stdout.slice(0, separator).trim() : "";
-    const runOutput = separator >= 0 ? stdout.slice(separator + "___RUN_OUTPUT___".length).trim() : stdout;
+    const buildOutput = stdout
+      .slice(
+        0,
+        buildStatusMarker >= 0
+          ? buildStatusMarker
+          : separator >= 0
+            ? separator
+            : undefined
+      )
+      .trim();
+    const runOutput = separator >= 0 ? stdout.slice(separator + "___RUN_OUTPUT___".length).trim() : "";
 
-    const hasBuildError = buildOutput.includes("error CS") || buildOutput.includes("Build FAILED");
+    const hasBuildError = buildStatus !== null && buildStatus !== 0;
 
     return {
-      stdout: hasBuildError ? "" : runOutput,
-      stderr: hasBuildError ? buildOutput : "",
+      stdout: hasBuildError ? "" : separator >= 0 ? runOutput : stdout,
+      stderr: hasBuildError ? buildOutput : stderr,
       exitCode,
       compileErrors: hasBuildError ? buildOutput : "",
       compileErrorsList: hasBuildError ? parseBuildErrors(buildOutput) : [],

@@ -18,13 +18,19 @@ body {
 .resize-handle {
   position: relative;
   flex-shrink: 0;
-  background: transparent;
+  background: #182030;
   transition: background 0.15s;
+}
+
+.resize-handle::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
 }
 
 .resize-handle:hover,
 .resize-handle[data-resize-handle-active] {
-  background: #3b82f6 !important;
+  background: #5b8def !important;
 }
 
 [data-panel] {
@@ -49,6 +55,11 @@ body {
   animation: pulse-glow 2s ease-in-out infinite;
 }
 
+.library-row:hover .library-actions,
+.library-row:focus-within .library-actions {
+  opacity: 1;
+}
+
 @keyframes panel-slide-in-left {
   from {
     opacity: 0;
@@ -68,5 +79,22 @@ body {
   to {
     opacity: 1;
     transform: translateX(0);
+  }
+}
+
+@media (max-width: 900px) {
+  .library-actions {
+    opacity: 1 !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

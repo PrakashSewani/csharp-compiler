@@ -63,6 +63,7 @@ export default function App() {
   const [lintErrors, setLintErrors] = useState<LintError[]>([]);
   const [showTestCases, setShowTestCases] = useState(false);
   const [showSidebar, setShowSidebar] = useState(true);
+  const [showOutput, setShowOutput] = useState(true);
   const [stdinMap, setStdinMap] = useState<Record<string, string>>({});
   const [newSolutionModalOpen, setNewSolutionModalOpen] = useState(false);
   const [newFileModalOpen, setNewFileModalOpen] = useState(false);
@@ -71,6 +72,8 @@ export default function App() {
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const lintTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const saveChain = useRef<Promise<void>>(Promise.resolve());
+  const pendingSaveCount = useRef(0);
 
   const currentFileKey = currentSolution && currentFile ? `${currentSolution}/${currentFile}` : null;
   const currentStdin = currentFileKey ? (stdinMap[currentFileKey] || "") : "";
@@ -90,6 +93,25 @@ export default function App() {
     const list = await api.listSolutions();
     setSolutions(list);
   }, []);
+
+  const saveDocument = useCallback(
+    (solution: string, file: string, nextCode: string, nextTestCases: TestCase[]) => {
+      pendingSaveCount.current += 1;
+      setIsSaving(true);
+
+      const save = saveChain.current
+        .catch(() => undefined)
+        .then(() => api.saveFile(solution, file, nextCode, nextTestCases));
+
+      saveChain.current = save.catch(() => undefined);
+
+      return save.finally(() => {
+        pendingSaveCount.current -= 1;
+        if (pendingSaveCount.current === 0) setIsSaving(false);
+      });
+    },
+    []
+  );
 
   useEffect(() => {
     refreshSolutions();
@@ -158,11 +180,10 @@ public class Solution
 
       if (currentSolution && currentFile) {
         clearTimeout(saveTimer.current);
-        setIsSaving(true);
-        saveTimer.current = setTimeout(async () => {
-          await api.saveFile(currentSolution, currentFile, newCode, testCases);
-          setIsSaving(false);
-          refreshSolutions();
+        saveTimer.current = setTimeout(() => {
+          void saveDocument(currentSolution, currentFile, newCode, testCases)
+            .then(refreshSolutions)
+            .catch((error) => console.error("Autosave failed:", error));
         }, 1500);
       }
 
@@ -181,24 +202,32 @@ public class Solution
         }
       }, 2000);
     },
-    [currentSolution, currentFile, currentFileKey, testCases, refreshSolutions]
+    [currentSolution, currentFile, currentFileKey, testCases, refreshSolutions, saveDocument]
   );
 
   const handleTestCasesChange = useCallback(
-    async (newTestCases: TestCase[]) => {
+    (newTestCases: TestCase[]) => {
       setTestCases(newTestCases);
       if (currentSolution && currentFile) {
-        await api.saveFile(currentSolution, currentFile, code, newTestCases);
+        clearTimeout(saveTimer.current);
+        saveTimer.current = setTimeout(() => {
+          void saveDocument(currentSolution, currentFile, code, newTestCases)
+            .then(refreshSolutions)
+            .catch((error) => console.error("Autosave failed:", error));
+        }, 800);
       }
     },
-    [currentSolution, currentFile, code]
+    [currentSolution, currentFile, code, refreshSolutions, saveDocument]
   );
 
   const handleRun = useCallback(async () => {
     if (!queuedFile) return;
 
     const [solution, file] = queuedFile.split("/");
-    const entry = await api.getFile(solution, file);
+    const isCurrentFile = queuedFile === currentFileKey;
+    const entry = isCurrentFile
+      ? { code, testCases }
+      : await api.getFile(solution, file);
     const fileStdin = stdinMap[queuedFile] || "";
 
     setIsRunning(true);
@@ -206,7 +235,10 @@ public class Solution
     setExecutionErrors([]);
 
     try {
-      await api.saveFile(solution, file, entry.code, entry.testCases);
+      if (isCurrentFile) {
+        clearTimeout(saveTimer.current);
+        await saveDocument(solution, file, entry.code, entry.testCases);
+      }
 
       const result = await api.executeCode(
         entry.code,
@@ -231,16 +263,15 @@ public class Solution
     } finally {
       setIsRunning(false);
     }
-  }, [queuedFile, stdinMap]);
+  }, [queuedFile, currentFileKey, code, testCases, stdinMap, saveDocument]);
 
   const handleSave = useCallback(async () => {
     if (currentSolution && currentFile) {
-      await api.saveFile(currentSolution, currentFile, code, testCases);
-      setIsSaving(true);
-      refreshSolutions();
-      setTimeout(() => setIsSaving(false), 500);
+      clearTimeout(saveTimer.current);
+      await saveDocument(currentSolution, currentFile, code, testCases);
+      await refreshSolutions();
     }
-  }, [currentSolution, currentFile, code, testCases, refreshSolutions]);
+  }, [currentSolution, currentFile, code, testCases, refreshSolutions, saveDocument]);
 
   const handleDeleteSolution = useCallback(
     async (name: string) => {
@@ -327,79 +358,72 @@ public class Solution
   }, [handleRun, handleSave, commandPaletteOpen]);
 
   return (
-    <Box h="100vh" display="flex" flexDirection="column" bg="bg.app">
+    <Box h="100dvh" display="flex" flexDirection="column" bg="bg.app">
       <Header
         currentSolution={currentSolution}
         currentFile={currentFile}
-        queuedFile={queuedFile}
         isRunning={isRunning}
-        isSaving={isSaving}
         onRun={handleRun}
-        onNewSolution={() => setNewSolutionModalOpen(true)}
-        onNewFile={() => handleOpenNewFileModal()}
-        onToggleTests={() => setShowTestCases(!showTestCases)}
+        onToggleTests={() => setShowTestCases((visible) => !visible)}
         showTestCases={showTestCases}
         showSidebar={showSidebar}
-        onToggleSidebar={() => setShowSidebar(!showSidebar)}
+        onToggleSidebar={() => setShowSidebar((visible) => !visible)}
+        showOutput={showOutput}
+        onToggleOutput={() => setShowOutput((visible) => !visible)}
         onOpenSettings={() => setSettingsModalOpen(true)}
+        testSummary={output?.testResults}
       />
 
       <Group orientation="horizontal" style={{ flex: 1, overflow: "hidden" }}>
         {showSidebar && (
           <>
-            <Panel defaultSize="20%" minSize="15%" maxSize="35%">
-              <FileExplorer
-                solutions={solutions}
-                currentSolution={currentSolution}
-                currentFile={currentFile}
-                queuedFile={queuedFile}
-                onOpenFile={openFile}
-                onNewSolution={() => setNewSolutionModalOpen(true)}
-                onNewFile={(solution) => handleOpenNewFileModal(solution)}
-                onDeleteSolution={handleDeleteSolution}
-                onDeleteFile={handleDeleteFile}
-              />
+            <Panel defaultSize="23%" minSize="280px" maxSize="420px">
+              <Box h="full">
+                <FileExplorer
+                  solutions={solutions}
+                  currentSolution={currentSolution}
+                  currentFile={currentFile}
+                  onOpenFile={openFile}
+                  onNewSolution={() => setNewSolutionModalOpen(true)}
+                  onNewFile={(solution) => handleOpenNewFileModal(solution)}
+                  onDeleteSolution={handleDeleteSolution}
+                  onDeleteFile={handleDeleteFile}
+                />
+              </Box>
             </Panel>
             <Separator
               className="resize-handle"
-              style={{ background: "#182030", width: 3 }}
+              style={{ width: 5 }}
             />
           </>
         )}
 
-        <Panel defaultSize={showTestCases ? "55%" : "80%"} minSize="30%">
+        <Panel defaultSize={showTestCases ? "53%" : "77%"} minSize="420px">
           <Group orientation="vertical">
-            <Panel defaultSize="70%" minSize="30%">
+            <Panel defaultSize={showOutput ? "70%" : "100%"} minSize="30%">
               <Flex direction="column" h="full">
-                {/* Editor tab bar */}
                 {currentSolution && currentFile && (
                   <Flex
                     alignItems="center"
-                    h={10}
-                    px={2}
+                    justifyContent="space-between"
+                    h="52px"
+                    minH="52px"
+                    px={5}
                     flexShrink={0}
-                    gap={1}
                     bg="bg.panel"
                     borderBottom="1px solid"
                     borderColor="border.subtle"
                   >
-                    <HStack
-                      gap={2}
-                      px={3}
-                      h={7}
-                      borderRadius="md"
-                      bg="bg.surface"
-                      border="1px solid"
-                      borderColor="border.default"
-                    >
-                      <Box w={2} h={2} borderRadius="full" bg="accent.blue" />
-                      <Text fontSize="xs" fontWeight="medium" color="text.muted">
-                        {currentSolution}/
+                    <HStack gap={3} minW={0}>
+                      <Box w={2} h={2} borderRadius="full" bg="accent.blue" boxShadow="0 0 0 3px rgba(59, 130, 246, 0.12)" />
+                      <Text fontSize="sm" fontWeight="700" color="text.primary" truncate>
+                        {currentFile}
                       </Text>
-                      <Text fontSize="xs" fontWeight="medium" color="text.primary">
-                        {currentFile}.cs
+                      <Text fontSize="xs" color="text.muted" display={{ base: "none", md: "block" }}>
+                        in {currentSolution}
                       </Text>
                     </HStack>
+                    <Text fontSize="xs" fontFamily="mono" color="text.muted">C# / .NET 8</Text>
                   </Flex>
                 )}
                 <Box flex={1} overflow="hidden">
@@ -407,6 +431,8 @@ public class Solution
                     <Editor
                       code={code}
                       onChange={handleCodeChange}
+                      onRun={handleRun}
+                      onSave={handleSave}
                       errors={errors}
                     />
                   ) : (
@@ -416,20 +442,11 @@ public class Solution
                       justifyContent="center"
                     >
                       <Box textAlign="center">
-                        <Text
-                          fontSize="5xl"
-                          mb={4}
-                          fontFamily="mono"
-                          color="text.muted"
-                          opacity={0.2}
-                        >
-                          {"{ }"}
-                        </Text>
-                        <Text fontSize="sm" mb={1} color="text.secondary">
-                          No file open
+                        <Text fontSize="xl" mb={1} fontWeight="700" color="text.secondary">
+                          Choose a problem to begin
                         </Text>
                         <Text fontSize="xs" color="text.muted">
-                          Create a solution and add files to get started
+                          Open one from your practice library or create a new collection.
                         </Text>
                         <HStack justify="center" gap={2} mt={3}>
                           <Kbd fontSize="2xs">Ctrl+K</Kbd>
@@ -444,20 +461,21 @@ public class Solution
               </Flex>
             </Panel>
 
-            <Separator
-              className="resize-handle"
-              style={{ background: "#182030", width: 3 }}
-            />
-
-            <Panel defaultSize="30%" minSize="15%" maxSize="60%">
-              <OutputPanel
-                output={output}
-                isRunning={isRunning}
-                stdin={currentStdin}
-                onStdinChange={handleStdinChange}
-                errors={errors}
-              />
-            </Panel>
+            {showOutput && (
+              <>
+                <Separator className="resize-handle" style={{ height: 5 }} />
+                <Panel defaultSize="30%" minSize="15%" maxSize="60%">
+                  <OutputPanel
+                    output={output}
+                    isRunning={isRunning}
+                    stdin={currentStdin}
+                    onStdinChange={handleStdinChange}
+                    errors={errors}
+                    onCollapse={() => setShowOutput(false)}
+                  />
+                </Panel>
+              </>
+            )}
           </Group>
         </Panel>
 
@@ -465,23 +483,26 @@ public class Solution
           <>
             <Separator
               className="resize-handle"
-              style={{ background: "#182030", width: 3 }}
+              style={{ width: 5 }}
             />
-            <Panel defaultSize="25%" minSize="15%" maxSize="40%">
-              <TestCasePanel
-                testCases={testCases}
-                onChange={handleTestCasesChange}
-                onRunAll={handleRun}
-              />
+            <Panel defaultSize="24%" minSize="300px" maxSize="440px">
+              <Box h="full">
+                <TestCasePanel
+                  testCases={testCases}
+                  onChange={handleTestCasesChange}
+                  onRunAll={handleRun}
+                  onCollapse={() => setShowTestCases(false)}
+                />
+              </Box>
             </Panel>
           </>
         )}
       </Group>
 
       <StatusBar
-        currentFile={currentFile}
         isSaving={isSaving}
         errorCount={errors.length}
+        testCount={testCases.length}
       />
 
       <NewSolutionModal

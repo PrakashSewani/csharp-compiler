@@ -1,15 +1,15 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
-  FileCode,
-  Plus,
-  Trash2,
-  FolderOpen,
-  Folder,
-  ChevronRight,
+  BookOpen,
   ChevronDown,
+  ChevronRight,
+  FileCode2,
+  Folder,
+  FolderOpen,
+  FolderPlus,
+  Plus,
   Search,
-  Play,
-  CornerDownRight,
+  Trash2,
 } from "lucide-react";
 import {
   Box,
@@ -18,9 +18,9 @@ import {
   VStack,
   Text,
   IconButton,
+  Button,
   Input,
   InputGroup,
-  Kbd,
 } from "@chakra-ui/react";
 import type { SolutionFolder } from "../api";
 
@@ -28,7 +28,6 @@ interface FileExplorerProps {
   solutions: SolutionFolder[];
   currentSolution: string | null;
   currentFile: string | null;
-  queuedFile: string | null;
   onOpenFile: (solution: string, file: string) => void;
   onNewSolution: () => void;
   onNewFile: (solution: string) => void;
@@ -40,7 +39,6 @@ export function FileExplorer({
   solutions,
   currentSolution,
   currentFile,
-  queuedFile,
   onOpenFile,
   onNewSolution,
   onNewFile,
@@ -49,369 +47,275 @@ export function FileExplorer({
 }: FileExplorerProps) {
   const [search, setSearch] = useState("");
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
-  const listRef = useRef<HTMLDivElement>(null);
 
   const toggleFolder = useCallback((name: string) => {
-    setExpandedFolders((prev) => {
-      const next = new Set(prev);
-      if (next.has(name)) {
-        next.delete(name);
-      } else {
-        next.add(name);
-      }
+    setExpandedFolders((previous) => {
+      const next = new Set(previous);
+      next.has(name) ? next.delete(name) : next.add(name);
       return next;
     });
   }, []);
 
   useEffect(() => {
-    if (currentSolution && !expandedFolders.has(currentSolution)) {
-      setExpandedFolders((prev) => new Set(prev).add(currentSolution));
+    if (currentSolution) {
+      setExpandedFolders((previous) => new Set(previous).add(currentSolution));
     }
   }, [currentSolution]);
 
-  const filteredSolutions = solutions
-    .map((sol) => {
-      if (!search) return sol;
-      const matchingFiles = sol.files.filter((f) =>
-        f.name.toLowerCase().includes(search.toLowerCase())
-      );
-      if (
-        matchingFiles.length > 0 ||
-        sol.name.toLowerCase().includes(search.toLowerCase())
-      ) {
-        return { ...sol, files: matchingFiles };
-      }
-      return null;
-    })
-    .filter(Boolean) as SolutionFolder[];
+  const query = search.trim().toLowerCase();
+  const filteredSolutions = solutions.flatMap((solution) => {
+    if (!query) return [solution];
+    if (solution.name.toLowerCase().includes(query)) return [solution];
 
-  const totalFiles = solutions.reduce((sum, s) => sum + s.files.length, 0);
+    const files = solution.files.filter((file) => file.name.toLowerCase().includes(query));
+    return files.length > 0 ? [{ ...solution, files }] : [];
+  });
 
   return (
-    <Box
-      h="100%"
-      display="flex"
-      flexDirection="column"
-      overflow="hidden"
-      bg="bg.panel"
-      animation="panel-slide-in-left 200ms ease-out"
-    >
-      {/* Header */}
-      <Flex
-        alignItems="center"
-        justifyContent="space-between"
-        px={4}
-        pt={4}
-        pb={3}
-        flexShrink={0}
-        borderBottom="1px solid"
-        borderColor="border.subtle"
-      >
-        <HStack gap={2}>
-          <FolderOpen size={13} color="#546478" />
-          <Text
-            fontSize="2xs"
-            fontWeight="bold"
-            textTransform="uppercase"
-            letterSpacing="widest"
-            color="text.muted"
-          >
-            Explorer
-          </Text>
-          {totalFiles > 0 && (
-            <Text
-              fontSize="2xs"
-              px={1.5}
-              py={0.5}
-              borderRadius="full"
-              fontWeight="bold"
-              bg="bg.hover"
-              color="text.muted"
-            >
-              {totalFiles}
+    <Box h="100%" display="flex" flexDirection="column" overflow="hidden" bg="bg.panel">
+      <Box px={4} pt={4} pb={3} flexShrink={0} borderBottom="1px solid" borderColor="border.subtle">
+        <Flex alignItems="center" justifyContent="space-between" gap={4} mb={4}>
+          <Box>
+            <Text fontSize="sm" fontWeight="700" color="text.primary">
+              Practice Library
             </Text>
-          )}
-        </HStack>
-        <IconButton
-          aria-label="New solution"
-          size="xs"
-          variant="outline"
-          onClick={onNewSolution}
-          title="New Solution (folder)"
-        >
-          <Plus size={13} />
-        </IconButton>
-      </Flex>
+            <Text fontSize="xs" color="text.muted">
+              {solutions.length} collection{solutions.length === 1 ? "" : "s"}
+            </Text>
+          </Box>
+          <IconButton
+            aria-label="Create collection"
+            title="Create collection"
+            size="md"
+            variant="subtle"
+            colorPalette="blue"
+            onClick={onNewSolution}
+          >
+            <FolderPlus size={17} />
+          </IconButton>
+        </Flex>
 
-      {/* Search */}
-      <Box px={3} pb={3} pt={2} flexShrink={0}>
-        <InputGroup startElement={<Box pl={2}><Search size={12} color="#546478" /></Box>}>
+        <InputGroup startElement={<Search size={14} />}>
           <Input
-            size="sm"
-            placeholder="Search files..."
+            size="md"
+            placeholder="Find a problem"
+            aria-label="Search practice library"
             value={search}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-              setSearch(e.target.value)
-            }
-            fontFamily="mono"
+            onChange={(event) => setSearch(event.target.value)}
           />
         </InputGroup>
       </Box>
 
-      {/* Tree */}
-      <Box ref={listRef} flex={1} overflowY="auto" px={2} pb={2}>
+      <Box flex={1} overflowY="auto" px={3} py={3}>
         {filteredSolutions.length === 0 ? (
-          <Flex
-            direction="column"
-            alignItems="center"
-            justifyContent="center"
-            h="full"
-            px={4}
-            py={8}
-          >
-            <Box
-              w={12}
-              h={12}
-              borderRadius="xl"
-              display="flex"
-              alignItems="center"
-              justifyContent="center"
-              mb={3}
-              bg="bg.surface"
-            >
-              <FolderOpen size={24} color="#546478" opacity={0.5} />
-            </Box>
-            <Text fontSize="xs" textAlign="center" lineHeight="relaxed" color="text.muted">
-              {search ? "No matching files" : "No solutions yet"}
+          <Flex direction="column" alignItems="center" justifyContent="center" h="full" px={6}>
+            <BookOpen size={28} color="currentColor" opacity={0.25} />
+            <Text mt={3} fontSize="sm" fontWeight="600" color="text.secondary">
+              {query ? "Nothing found" : "Build your practice library"}
             </Text>
-            {!search && (
+            <Text mt={1} fontSize="xs" textAlign="center" color="text.muted">
+              {query
+                ? "Try a different problem or collection name."
+                : "Create a collection, then add your first C# problem."}
+            </Text>
+            {!query && (
               <Text
                 as="button"
+                mt={4}
                 fontSize="xs"
-                fontWeight="medium"
-                mt={2}
+                fontWeight="700"
                 color="accent.blue"
                 onClick={onNewSolution}
-                _hover={{ textDecoration: "underline" }}
               >
-                Create your first solution
+                Create collection
               </Text>
             )}
           </Flex>
         ) : (
-          <VStack gap={0} align="stretch">
-            {filteredSolutions.map((sol) => {
-              const isExpanded = expandedFolders.has(sol.name);
-              const isActiveSolution = currentSolution === sol.name;
+          <VStack gap={3} align="stretch">
+            {filteredSolutions.map((solution) => {
+              const isExpanded = query ? true : expandedFolders.has(solution.name);
+              const isActiveCollection = currentSolution === solution.name;
 
               return (
-                <Box key={sol.name}>
-                  {/* Folder row */}
+                <Box
+                  key={solution.name}
+                  border="1px solid"
+                  borderColor={isActiveCollection ? "border.strong" : "border.subtle"}
+                  borderRadius="lg"
+                  overflow="hidden"
+                  bg="bg.app"
+                  boxShadow="none"
+                >
                   <Flex
                     alignItems="center"
-                    gap={2}
-                    px={2}
-                    py={2}
-                    borderRadius="md"
-                    cursor="pointer"
-                    transition="all 100ms"
-                    bg={isActiveSolution ? "bg.hover" : "transparent"}
-                    onClick={() => toggleFolder(sol.name)}
-                    _hover={{ bg: "bg.hover" }}
+                    minH="52px"
+                    bg={isActiveCollection ? "bg.elevated" : "bg.surface"}
+                    borderLeft="3px solid"
+                    borderLeftColor={isActiveCollection ? "accent.blue" : "transparent"}
+                    _hover={{ bg: "bg.elevated" }}
                   >
-                    <Box w={4} h={4} display="flex" alignItems="center" justifyContent="center" flexShrink={0}>
-                      {isExpanded ? (
-                        <ChevronDown size={14} color="#8494a7" />
-                      ) : (
-                        <ChevronRight size={14} color="#8494a7" />
-                      )}
-                    </Box>
-                    <Box
-                      w={6}
-                      h={6}
-                      borderRadius="md"
-                      display="flex"
+                    <Flex
+                      as="button"
                       alignItems="center"
-                      justifyContent="center"
-                      flexShrink={0}
-                      bg={isActiveSolution ? "accent.blue/15" : "bg.surface"}
-                    >
-                      {isExpanded ? (
-                        <FolderOpen size={14} color={isActiveSolution ? "#3b82f6" : "#546478"} />
-                      ) : (
-                        <Folder size={14} color={isActiveSolution ? "#3b82f6" : "#546478"} />
-                      )}
-                    </Box>
-                    <Text
-                      fontSize="xs"
-                      fontWeight="semibold"
+                      gap={3}
                       flex={1}
-                      truncate
-                      color={isActiveSolution ? "text.primary" : "text.secondary"}
+                      w="full"
+                      minW={0}
+                      minH="52px"
+                      px={3}
+                      textAlign="left"
+                      onClick={() => toggleFolder(solution.name)}
+                      aria-expanded={isExpanded}
                     >
-                      {sol.name}
-                    </Text>
-                    <HStack gap={1} flexShrink={0}>
-                      <Text fontSize="2xs" color="text.muted">
-                        {sol.files.length}
-                      </Text>
-                      <IconButton
-                        aria-label="Add file to solution"
-                        size="2xs"
-                        variant="ghost"
-                        color="text.muted"
-                        _hover={{ color: "accent.blue", bg: "accent.blue/10" }}
-                        onClick={(e: React.MouseEvent) => {
-                          e.stopPropagation();
-                          onNewFile(sol.name);
-                        }}
-                        title={`New file in ${sol.name}`}
+                      <Box color="text.muted" flexShrink={0}>
+                        {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                      </Box>
+                      <Flex
+                        w={8}
+                        h={8}
+                        alignItems="center"
+                        justifyContent="center"
+                        borderRadius="md"
+                        bg="bg.hover"
+                        color={isActiveCollection ? "accent.blue" : "text.muted"}
+                        flexShrink={0}
                       >
-                        <Plus size={12} />
-                      </IconButton>
-                      <IconButton
-                        aria-label="Delete solution"
-                        size="2xs"
-                        variant="ghost"
-                        color="text.muted"
-                        _hover={{ color: "accent.red", bg: "accent.red/10" }}
-                        onClick={(e: React.MouseEvent) => {
-                          e.stopPropagation();
-                          onDeleteSolution(sol.name);
-                        }}
-                      >
-                        <Trash2 size={12} />
-                      </IconButton>
-                    </HStack>
+                        {isExpanded ? <FolderOpen size={16} /> : <Folder size={16} />}
+                      </Flex>
+                      <Box minW={0} flex={1}>
+                        <Text
+                          fontSize="sm"
+                          fontWeight="700"
+                          color={isActiveCollection ? "text.primary" : "text.secondary"}
+                          truncate
+                        >
+                          {solution.name}
+                        </Text>
+                        <Text fontSize="xs" color="text.muted">
+                          {solution.files.length} problem{solution.files.length === 1 ? "" : "s"}
+                        </Text>
+                      </Box>
+                    </Flex>
                   </Flex>
 
-                  {/* Files under folder */}
                   {isExpanded && (
-                    <Box pl={5}>
-                      {sol.files.length === 0 ? (
-                        <Flex alignItems="center" gap={2} px={2} py={2} pl={10}>
-                          <Text fontSize="2xs" color="text.muted" fontStyle="italic">
-                            No files yet
-                          </Text>
+                    <VStack gap={1} align="stretch" px={2.5} py={2.5} bg="bg.app">
+                      {solution.files.length === 0 ? (
+                        <Flex alignItems="center" gap={4} px={3} py={3} borderRadius="md" bg="bg.surface">
+                          <Box>
+                            <Text fontSize="sm" fontWeight="600" color="text.secondary">No problems yet</Text>
+                            <Text fontSize="xs" color="text.muted">Use Add problem below to create a C# exercise.</Text>
+                          </Box>
                         </Flex>
                       ) : (
-                        sol.files.map((file) => {
-                          const isActive =
-                            currentSolution === sol.name && currentFile === file.name;
-                          const isQueued = queuedFile === `${sol.name}/${file.name}`;
+                        solution.files.map((file) => {
+                          const isActive = currentSolution === solution.name && currentFile === file.name;
 
                           return (
                             <Flex
                               key={file.name}
-                              data-file-item
+                              className="library-row"
                               alignItems="center"
-                              gap={2}
-                              px={2}
-                              py={1.5}
-                              pl={4}
+                              minH="44px"
                               borderRadius="md"
-                              cursor="pointer"
-                              transition="all 100ms"
-                              bg={
-                                isActive
-                                  ? "bg.active"
-                                  : isQueued
-                                    ? "accent.green/10"
-                                    : "transparent"
-                              }
-                              borderLeft="2px solid"
-                              borderLeftColor={
-                                isActive
-                                  ? "accent.blue"
-                                  : isQueued
-                                    ? "accent.green"
-                                    : "transparent"
-                              }
-                              onClick={() => onOpenFile(sol.name, file.name)}
-                              _hover={{ bg: isActive ? "bg.active" : "bg.hover" }}
+                              bg={isActive ? "bg.active" : "transparent"}
+                              color={isActive ? "text.primary" : "text.secondary"}
+                              border="1px solid"
+                              borderColor={isActive ? "border.strong" : "transparent"}
+                              borderLeft="3px solid"
+                              borderLeftColor={isActive ? "accent.blue" : "transparent"}
+                              _hover={{ bg: isActive ? "bg.active" : "bg.surface", borderColor: isActive ? "border.strong" : "border.subtle" }}
+                              _focusWithin={{ bg: isActive ? "bg.active" : "bg.surface" }}
                             >
-                              <Box
-                                w={5}
-                                h={5}
-                                borderRadius="sm"
-                                display="flex"
+                              <Flex
+                                as="button"
                                 alignItems="center"
-                                justifyContent="center"
-                                flexShrink={0}
-                                bg={isActive ? "accent.blue/15" : isQueued ? "accent.green/15" : "bg.surface"}
+                                gap={3}
+                                flex={1}
+                                w="full"
+                                minW={0}
+                                minH="44px"
+                                px={3.5}
+                                textAlign="left"
+                                aria-current={isActive ? "page" : undefined}
+                                onClick={() => onOpenFile(solution.name, file.name)}
                               >
-                                <FileCode
-                                  size={12}
-                                  color={isActive ? "#3b82f6" : isQueued ? "#22c55e" : "#546478"}
-                                />
-                              </Box>
-                              <Box flex={1} minW={0}>
-                                <Text
-                                  fontSize="xs"
-                                  fontWeight="medium"
-                                  truncate
-                                  color={isActive ? "text.primary" : "text.secondary"}
-                                >
+                                <Flex w={6} h={6} alignItems="center" justifyContent="center" borderRadius="sm" bg="bg.surface" color={isActive ? "accent.blue" : "text.muted"} flexShrink={0}>
+                                  <FileCode2 size={14} color="currentColor" />
+                                </Flex>
+                                <Text fontSize="sm" fontWeight={isActive ? "700" : "500"} truncate>
                                   {file.name}
-                                  <Box as="span" color="text.muted">
-                                    .cs
-                                  </Box>
                                 </Text>
-                              </Box>
-                              <HStack gap={1} flexShrink={0}>
-                                {isQueued && (
-                                  <Box title="Queued for execution">
-                                    <Play size={10} fill="#22c55e" color="#22c55e" />
-                                  </Box>
-                                )}
-                                <IconButton
-                                  aria-label="Delete file"
-                                  size="2xs"
-                                  variant="ghost"
-                                  color="text.muted"
-                                  _hover={{ color: "accent.red", bg: "accent.red/10" }}
-                                  onClick={(e: React.MouseEvent) => {
-                                    e.stopPropagation();
-                                    onDeleteFile(sol.name, file.name);
-                                  }}
-                                >
-                                  <Trash2 size={11} />
-                                </IconButton>
-                              </HStack>
+                              </Flex>
                             </Flex>
                           );
                         })
                       )}
-                    </Box>
+                    </VStack>
                   )}
+
+                  <Flex
+                    direction="column"
+                    alignItems="stretch"
+                    gap={2}
+                    px={3}
+                    py={3}
+                    bg="bg.surface"
+                    borderTop="1px solid"
+                    borderColor="border.subtle"
+                  >
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      colorPalette="gray"
+                      onClick={() => onNewFile(solution.name)}
+                      w="full"
+                      justifyContent="center"
+                    >
+                      <Plus size={15} />
+                      Add problem
+                    </Button>
+
+                    <VStack gap={2} w="full" align="stretch">
+                      {currentSolution === solution.name && currentFile && (
+                        <Button
+                          aria-label={`Delete selected problem ${currentFile}`}
+                          title={`Delete ${currentFile}`}
+                          size="sm"
+                          variant="ghost"
+                          color="text.muted"
+                          _hover={{ color: "accent.red", bg: "#2a1215" }}
+                          onClick={() => onDeleteFile(solution.name, currentFile)}
+                          w="full"
+                          justifyContent="center"
+                        >
+                          <Trash2 size={14} />
+                          Delete file
+                        </Button>
+                      )}
+                      <Button
+                        aria-label={`Delete collection ${solution.name}`}
+                        title={`Delete collection ${solution.name}`}
+                        size="sm"
+                        variant="ghost"
+                        color="text.muted"
+                        _hover={{ color: "accent.red", bg: "#2a1215" }}
+                        onClick={() => onDeleteSolution(solution.name)}
+                        w="full"
+                        justifyContent="center"
+                      >
+                        <Trash2 size={15} />
+                        Delete solution
+                      </Button>
+                    </VStack>
+                  </Flex>
                 </Box>
               );
             })}
           </VStack>
         )}
       </Box>
-
-      {/* Footer */}
-      <Flex
-        alignItems="center"
-        justifyContent="space-between"
-        px={3}
-        py={2.5}
-        flexShrink={0}
-        borderTop="1px solid"
-        borderColor="border.subtle"
-        bg="bg.panel"
-      >
-        <Text fontSize="2xs" color="text.muted">
-          {solutions.length} solution{solutions.length !== 1 ? "s" : ""}
-        </Text>
-        <HStack gap={1}>
-          <Kbd px={4} fontSize="2xs">Ctrl+N</Kbd>
-          <Text fontSize="2xs" color="text.muted">
-            new
-          </Text>
-        </HStack>
-      </Flex>
     </Box>
   );
 }

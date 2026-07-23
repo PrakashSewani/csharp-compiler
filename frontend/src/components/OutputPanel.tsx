@@ -1,17 +1,15 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
-  Terminal,
-  ChevronDown,
-  ChevronUp,
-  Loader2,
-  CheckCircle2,
-  XCircle,
-  AlertTriangle,
-  Clock,
-  Keyboard,
-  Copy,
-  Check,
   AlertCircle,
+  AlertTriangle,
+  Check,
+  CheckCircle2,
+  Copy,
+  Keyboard,
+  Loader2,
+  Terminal,
+  PanelBottomClose,
+  XCircle,
 } from "lucide-react";
 import {
   Box,
@@ -19,10 +17,9 @@ import {
   HStack,
   VStack,
   Text,
-  Badge,
   Button,
   IconButton,
-  Kbd,
+  Textarea,
 } from "@chakra-ui/react";
 import type { ExecutionResult, LintError } from "../api";
 
@@ -32,520 +29,221 @@ interface OutputPanelProps {
   stdin: string;
   onStdinChange: (stdin: string) => void;
   errors: LintError[];
+  onCollapse: () => void;
 }
 
-interface StatusInfo {
-  icon: React.ReactNode;
-  text: string;
-  colorPalette: string;
-  variant: string;
-}
+type Tab = "results" | "problems" | "stdin";
 
-function getStatus(isRunning: boolean, output: ExecutionResult | null): StatusInfo {
-  if (isRunning) {
-    return {
-      icon: <Loader2 size={12} className="animate-spin" />,
-      text: "Compiling & Running...",
-      colorPalette: "blue",
-      variant: "subtle",
-    };
-  }
-  if (!output) {
-    return { icon: null, text: "Ready", colorPalette: "gray", variant: "outline" };
-  }
-  if (output.timedOut) {
-    return {
-      icon: <Clock size={12} />,
-      text: "Timed Out",
-      colorPalette: "yellow",
-      variant: "subtle",
-    };
-  }
-  if (output.compileErrors) {
-    return {
-      icon: <XCircle size={12} />,
-      text: "Compilation Failed",
-      colorPalette: "red",
-      variant: "subtle",
-    };
-  }
-  if (output.exitCode !== 0) {
-    return {
-      icon: <XCircle size={12} />,
-      text: `Runtime Error`,
-      colorPalette: "red",
-      variant: "subtle",
-    };
-  }
-  if (output.testResults) {
-    const allPassed = output.testResults.passed === output.testResults.total;
-    return {
-      icon: allPassed ? <CheckCircle2 size={12} /> : <AlertTriangle size={12} />,
-      text: `${output.testResults.passed}/${output.testResults.total} Tests`,
-      colorPalette: allPassed ? "green" : "yellow",
-      variant: "subtle",
-    };
-  }
-  return {
-    icon: <CheckCircle2 size={12} />,
-    text: "Success",
-    colorPalette: "green",
-    variant: "subtle",
-  };
-}
-
-export function OutputPanel({
-  output,
-  isRunning,
-  stdin,
-  onStdinChange,
-  errors,
-}: OutputPanelProps) {
-  const [expanded, setExpanded] = useState(true);
-  const [activeTab, setActiveTab] = useState<"output" | "problems" | "stdin">("output");
+export function OutputPanel({ output, isRunning, stdin, onStdinChange, errors, onCollapse }: OutputPanelProps) {
+  const [activeTab, setActiveTab] = useState<Tab>("results");
   const [copied, setCopied] = useState(false);
 
-  const status = getStatus(isRunning, output);
+  useEffect(() => {
+    if (output?.compileErrors) setActiveTab("problems");
+    else if (output || isRunning) setActiveTab("results");
+  }, [isRunning, output]);
 
-  const getFullOutput = () => {
-    if (!output) return "";
-    const parts: string[] = [];
-    if (output.compileErrors) parts.push(output.compileErrors);
-    if (output.stderr && !output.compileErrors) parts.push(output.stderr);
-    if (output.stdout) parts.push(output.stdout);
-    return parts.join("\n");
-  };
+  const fullOutput = [output?.compileErrors, output?.stderr, output?.stdout].filter(Boolean).join("\n");
+  const allTestsPassed = output?.testResults
+    ? output.testResults.passed === output.testResults.total
+    : false;
 
-  const handleCopy = async () => {
-    await navigator.clipboard.writeText(getFullOutput());
+  const copyOutput = async () => {
+    await navigator.clipboard.writeText(fullOutput);
     setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    setTimeout(() => setCopied(false), 1600);
   };
 
   return (
-    <Box
-      h="100%"
-      display="flex"
-      flexDirection="column"
-      bg="bg.panel"
-    >
-      {/* Title bar */}
+    <Box h="100%" display="flex" flexDirection="column" overflow="hidden" bg="bg.panel" aria-live="polite">
       <Flex
         alignItems="center"
         justifyContent="space-between"
+        gap={5}
         px={4}
-        h={10}
+        h="52px"
+        minH="52px"
         flexShrink={0}
-        cursor="pointer"
-        userSelect="none"
-        borderBottom={expanded ? "1px solid" : "none"}
+        borderBottom="1px solid"
         borderColor="border.subtle"
-        onClick={() => setExpanded(!expanded)}
       >
-        <HStack gap={3}>
-          <Terminal size={13} color="#546478" />
-          <Text fontSize="xs" fontWeight="medium" color="text.secondary">
-            Output
-          </Text>
-          {status.text !== "Ready" && (
-            <Badge size="sm" colorPalette={status.colorPalette} variant={status.variant as any}>
-              {status.text}
-            </Badge>
-          )}
-          {status.icon}
+        <HStack gap={2} minW={0} overflowX="auto" role="tablist" aria-label="Execution details">
+          {([
+            ["results", "Results", Terminal],
+            ["problems", `Problems${errors.length ? ` ${errors.length}` : ""}`, AlertCircle],
+            ["stdin", "Input", Keyboard],
+          ] as const).map(([tab, label, Icon]) => (
+            <Button
+              key={tab}
+              role="tab"
+              aria-selected={activeTab === tab}
+              size="sm"
+              px={3.5}
+              variant={activeTab === tab ? "subtle" : "ghost"}
+              colorPalette={activeTab === tab ? "blue" : "gray"}
+              onClick={() => setActiveTab(tab)}
+            >
+              <Icon size={14} />
+              {label}
+            </Button>
+          ))}
         </HStack>
 
-        <HStack gap={2}>
-          {output?.testResults && (
-            <Badge
-              size="sm"
-              colorPalette={
-                output.testResults.passed === output.testResults.total ? "green" : "red"
-              }
-              variant="subtle"
-              fontFamily="mono"
-              fontWeight="bold"
-            >
-              {output.testResults.passed}/{output.testResults.total}
-            </Badge>
+        <HStack gap={3} flexShrink={0}>
+          {isRunning && (
+            <HStack gap={2} color="accent.blue">
+              <Loader2 size={13} className="animate-spin" />
+              <Text fontSize="xs" fontWeight="700">Running</Text>
+            </HStack>
           )}
-
-          {expanded && output && (
-            <IconButton
-              aria-label="Copy output"
-              size="xs"
-              variant="ghost"
-              color={copied ? "accent.green" : "text.muted"}
-              onClick={(e) => {
-                e.stopPropagation();
-                handleCopy();
-              }}
-            >
-              {copied ? <Check size={11} /> : <Copy size={11} />}
+          {!isRunning && output?.testResults && (
+            <Text fontSize="xs" fontWeight="700" color={allTestsPassed ? "accent.green" : "accent.yellow"}>
+              {output.testResults.passed}/{output.testResults.total} passed
+            </Text>
+          )}
+          {fullOutput && (
+            <IconButton aria-label="Copy execution output" title="Copy output" size="sm" variant="ghost" onClick={copyOutput}>
+              {copied ? <Check size={14} /> : <Copy size={14} />}
             </IconButton>
           )}
-
-          {expanded ? (
-            <ChevronDown size={14} color="#546478" />
-          ) : (
-            <ChevronUp size={14} color="#546478" />
-          )}
+          <IconButton aria-label="Collapse console" title="Collapse console" size="sm" variant="ghost" onClick={onCollapse}>
+            <PanelBottomClose size={15} />
+          </IconButton>
         </HStack>
       </Flex>
 
-      {/* Content */}
-      {expanded && (
-        <Box flex={1} display="flex" flexDirection="column" overflow="hidden">
-          {/* Tabs */}
-          <HStack
-            gap={0}
-            h={9}
-            flexShrink={0}
-            px={2}
-            borderBottom="1px solid"
-            borderColor="border.subtle"
-          >
-            {(["output", "problems", "stdin"] as const).map((tab) => (
-              <Button
-                key={tab}
-                size="xs"
-                variant="ghost"
-                color={activeTab === tab ? "text.primary" : "text.muted"}
-                borderBottom="2px solid"
-                borderBottomColor={activeTab === tab ? "accent.blue" : "transparent"}
-                borderRadius="none"
-                px={3}
-                fontWeight="semibold"
-                onClick={() => setActiveTab(tab)}
-              >
-                {tab === "stdin" && <Keyboard size={12} />}
-                {tab === "problems" && <AlertCircle size={12} />}
-                {tab === "output" ? "Output" : tab === "problems" ? "Problems" : "Stdin"}
-                {tab === "problems" && errors.length > 0 && (
-                  <Badge
-                    size="xs"
-                    ml={1}
-                    colorPalette="red"
-                    variant="subtle"
-                    borderRadius="full"
-                    fontSize="2xs"
-                    minW={4}
-                    h={4}
-                    display="flex"
-                    alignItems="center"
-                    justifyContent="center"
-                  >
-                    {errors.length}
-                  </Badge>
-                )}
-              </Button>
-            ))}
-          </HStack>
-
-          {/* Tab content */}
-          <Box flex={1} overflow="auto">
-            {activeTab === "output" ? (
-              <Box p={4}>
-                {isRunning ? (
-                  <HStack gap={3} py={4}>
-                    <Loader2 size={16} className="animate-spin" color="#3b82f6" />
-                    <Box>
-                      <Text fontSize="sm" fontWeight="medium" color="text.primary">
-                        Compiling and running...
-                      </Text>
-                      <Text fontSize="2xs" color="text.muted">
-                        Spawning sandbox container
-                      </Text>
-                    </Box>
-                  </HStack>
-                ) : output ? (
-                  <VStack gap={3} align="stretch">
-                    {output.compileErrors && (
-                      <Box>
-                        <Text
-                          fontSize="2xs"
-                          fontWeight="bold"
-                          textTransform="uppercase"
-                          letterSpacing="wider"
-                          mb={2}
-                          color="accent.red"
-                        >
-                          Compilation Errors
-                        </Text>
-                        <Box
-                          as="pre"
-                          fontSize="xs"
-                          fontFamily="mono"
-                          whiteSpace="pre-wrap"
-                          p={3}
-                          borderRadius="lg"
-                          lineHeight="relaxed"
-                          bg="accent.red/6"
-                          color="accent.red"
-                          border="1px solid"
-                          borderColor="accent.red/15"
-                        >
-                          {output.compileErrors}
-                        </Box>
-                      </Box>
-                    )}
-
-                    {output.stderr && !output.compileErrors && (
-                      <Box>
-                        <Text
-                          fontSize="2xs"
-                          fontWeight="bold"
-                          textTransform="uppercase"
-                          letterSpacing="wider"
-                          mb={2}
-                          color="accent.yellow"
-                        >
-                          Stderr
-                        </Text>
-                        <Box
-                          as="pre"
-                          fontSize="xs"
-                          fontFamily="mono"
-                          whiteSpace="pre-wrap"
-                          p={3}
-                          borderRadius="lg"
-                          lineHeight="relaxed"
-                          bg="accent.yellow/6"
-                          color="accent.yellow"
-                          border="1px solid"
-                          borderColor="accent.yellow/15"
-                        >
-                          {output.stderr}
-                        </Box>
-                      </Box>
-                    )}
-
-                    {output.testResults && (
-                      <Box>
-                        <Text
-                          fontSize="2xs"
-                          fontWeight="bold"
-                          textTransform="uppercase"
-                          letterSpacing="wider"
-                          mb={2}
-                          color={
-                            output.testResults.passed === output.testResults.total
-                              ? "accent.green"
-                              : "accent.yellow"
-                          }
-                        >
-                          Test Results
-                        </Text>
-                        <VStack gap={2} align="stretch">
-                          {output.testResults.details.map((d, i) => (
-                            <Flex
-                              key={i}
-                              fontSize="xs"
-                              fontFamily="mono"
-                              p={3}
-                              borderRadius="lg"
-                              alignItems="flex-start"
-                              gap={3}
-                              bg={d.passed ? "accent.green/6" : "accent.red/6"}
-                              border="1px solid"
-                              borderColor={d.passed ? "accent.green/15" : "accent.red/15"}
-                            >
-                              {d.passed ? (
-                                <CheckCircle2
-                                  size={14}
-                                  color="#22c55e"
-                                  style={{ flexShrink: 0, marginTop: 2 }}
-                                />
-                              ) : (
-                                <XCircle
-                                  size={14}
-                                  color="#ef4444"
-                                  style={{ flexShrink: 0, marginTop: 2 }}
-                                />
-                              )}
-                              <Box flex={1} minW={0}>
-                                <HStack gap={2}>
-                                  <Text
-                                    fontWeight="semibold"
-                                    color={d.passed ? "accent.green" : "accent.red"}
-                                  >
-                                    Test {i + 1}: {d.passed ? "PASS" : "FAIL"}
-                                  </Text>
-                                  <Text
-                                    fontSize="2xs"
-                                    fontFamily="mono"
-                                    px={1.5}
-                                    py={0.5}
-                                    borderRadius="md"
-                                    bg="bg.hover"
-                                    color="text.muted"
-                                    truncate
-                                    maxW="200px"
-                                  >
-                                    {d.input.slice(0, 30)}
-                                    {d.input.length > 30 ? "..." : ""}
-                                  </Text>
-                                </HStack>
-                                {!d.passed && (
-                                  <VStack gap={0.5} align="stretch" mt={1}>
-                                    <Text color="text.muted">
-                                      Expected: <Text as="span" color="accent.green">{d.expected}</Text>
-                                    </Text>
-                                    <Text color="text.muted">
-                                      Got: <Text as="span" color="accent.red">{d.actual}</Text>
-                                    </Text>
-                                  </VStack>
-                                )}
-                              </Box>
-                            </Flex>
-                          ))}
-                        </VStack>
-                      </Box>
-                    )}
-
-                    {output.stdout && (
-                      <Box>
-                        <Text
-                          fontSize="2xs"
-                          fontWeight="bold"
-                          textTransform="uppercase"
-                          letterSpacing="wider"
-                          mb={2}
-                          color="text.muted"
-                        >
-                          Program Output
-                        </Text>
-                        <Box
-                          as="pre"
-                          fontSize="xs"
-                          fontFamily="mono"
-                          whiteSpace="pre-wrap"
-                          p={3}
-                          borderRadius="lg"
-                          lineHeight="relaxed"
-                          bg="bg.surface"
-                          color="text.primary"
-                          border="1px solid"
-                          borderColor="border.subtle"
-                        >
-                          {output.stdout}
-                        </Box>
-                      </Box>
-                    )}
-
-                    {!output.stdout &&
-                      !output.stderr &&
-                      !output.compileErrors &&
-                      !output.testResults && (
-                        <Text fontSize="xs" py={4} color="text.muted">
-                          (No output)
-                        </Text>
-                      )}
-                  </VStack>
-                ) : (
-                  <Flex flexDirection="column" alignItems="center" justifyContent="center" py={8}>
-                    <Box mb={2}>
-                      <Terminal size={24} color="#546478" style={{ opacity: 0.3 }} />
-                    </Box>
-                    <Text fontSize="xs" color="text.muted">
-                      Click{" "}
-                      <Text as="span" fontWeight="semibold" color="accent.green">
-                        Run
-                      </Text>{" "}
-                      or press{" "}
-                      <Kbd fontSize="2xs">Ctrl</Kbd>+<Kbd fontSize="2xs">Enter</Kbd> to execute
-                    </Text>
-                  </Flex>
-                )}
-              </Box>
-            ) : activeTab === "problems" ? (
-              <Box p={4}>
-                {errors.length === 0 ? (
-                  <Flex flexDirection="column" alignItems="center" justifyContent="center" py={8}>
-                    <Box mb={2}>
-                      <CheckCircle2 size={24} color="#22c55e" style={{ opacity: 0.3 }} />
-                    </Box>
-                    <Text fontSize="xs" color="text.muted">
-                      No problems detected
-                    </Text>
-                    <Text fontSize="2xs" color="text.muted" mt={1}>
-                      Run your code to check for compilation errors
-                    </Text>
-                  </Flex>
-                ) : (
-                  <VStack gap={1} align="stretch">
-                    {errors.map((err, i) => (
-                      <Flex
-                        key={i}
-                        fontSize="xs"
-                        fontFamily="mono"
-                        p={2}
-                        px={3}
-                        borderRadius="md"
-                        alignItems="center"
-                        gap={3}
-                        cursor="pointer"
-                        bg="bg.surface"
-                        border="1px solid"
-                        borderColor="border.subtle"
-                        _hover={{
-                          bg: "bg.hover",
-                          borderColor: "border.default",
-                        }}
-                        onClick={() => {
-                          window.dispatchEvent(
-                            new CustomEvent("navigate-to-line", { detail: { line: err.line } })
-                          );
-                        }}
-                      >
-                        {err.severity === "error" ? (
-                          <XCircle size={13} color="#ef4444" style={{ flexShrink: 0 }} />
-                        ) : (
-                          <AlertTriangle size={13} color="#facc15" style={{ flexShrink: 0 }} />
-                        )}
-                        <Text fontSize="2xs" color="text.muted" whiteSpace="nowrap">
-                          [{err.line}:{err.column}]
-                        </Text>
-                        <Text fontSize="xs" color="text.primary" flex={1} truncate>
-                          {err.message}
-                        </Text>
-                      </Flex>
-                    ))}
-                  </VStack>
-                )}
-              </Box>
+      <Box flex={1} overflow="auto">
+        {activeTab === "results" && (
+          <Box p={5}>
+            {isRunning ? (
+              <Flex alignItems="center" gap={3} minH="100px">
+                <Loader2 size={18} className="animate-spin" color="currentColor" />
+                <Box>
+                  <Text fontSize="sm" fontWeight="700" color="text.primary">Compiling and running</Text>
+                  <Text fontSize="xs" color="text.muted">Executing in an isolated .NET sandbox.</Text>
+                </Box>
+              </Flex>
+            ) : !output ? (
+              <Flex direction="column" alignItems="center" justifyContent="center" minH="120px" textAlign="center">
+                <Terminal size={25} color="currentColor" opacity={0.2} />
+                <Text mt={2} fontSize="sm" fontWeight="700" color="text.secondary">Ready to run</Text>
+                <Text mt={1} fontSize="xs" color="text.muted">Run the active problem to see results here.</Text>
+              </Flex>
             ) : (
-              <Box p={4}>
-                <Text fontSize="xs" mb={2} color="text.secondary">
-                  Input for{" "}
-                  <Text as="span" fontFamily="mono" color="accent.purple">
-                    Console.ReadLine()
-                  </Text>
-                </Text>
-                <textarea
-                  style={{
-                    width: "100%",
-                    height: "96px",
-                    padding: "12px",
-                    borderRadius: "8px",
-                    fontSize: "12px",
-                    fontFamily: "monospace",
-                    resize: "none",
-                    outline: "none",
-                    background: "#0e1319",
-                    color: "#f0f4f8",
-                    border: "1px solid #182030",
-                  }}
-                  placeholder="Enter input here..."
-                  spellCheck={false}
-                  value={stdin}
-                  onChange={(e) => onStdinChange(e.target.value)}
-                />
-              </Box>
+              <VStack gap={4} align="stretch">
+                {output.timedOut && <ResultNotice tone="warning" title="Execution timed out" detail="The process exceeded the 30 second limit." />}
+                {output.exitCode !== 0 && !output.compileErrors && (
+                  <ResultNotice tone="error" title="Runtime error" detail={output.stderr || "The program exited with an error."} />
+                )}
+                {output.testResults?.details.map((detail, index) => (
+                  <Flex
+                    key={index}
+                    alignItems="flex-start"
+                    gap={3}
+                    p={4}
+                    borderRadius="md"
+                    bg={detail.passed ? "#0d2418" : "#2a1215"}
+                    border="1px solid"
+                    borderColor={detail.passed ? "#166534" : "#7f1d1d"}
+                  >
+                    {detail.passed ? <CheckCircle2 size={16} color="#22c55e" /> : <XCircle size={16} color="#ef4444" />}
+                    <Box minW={0} flex={1}>
+                      <Text fontSize="sm" fontWeight="700" color={detail.passed ? "accent.green" : "accent.red"}>
+                        Case {index + 1} {detail.passed ? "passed" : "failed"}
+                      </Text>
+                      {!detail.passed && (
+                        <Box mt={2} fontFamily="mono" fontSize="xs">
+                          <Text color="text.muted">Expected <Box as="span" color="accent.green">{detail.expected}</Box></Text>
+                          <Text color="text.muted">Received <Box as="span" color="accent.red">{detail.actual}</Box></Text>
+                        </Box>
+                      )}
+                    </Box>
+                  </Flex>
+                ))}
+                {output.stdout && !output.testResults && (
+                  <Box as="pre" p={3} borderRadius="md" bg="bg.app" border="1px solid" borderColor="border.subtle" fontFamily="mono" fontSize="sm" whiteSpace="pre-wrap" color="text.primary">
+                    {output.stdout}
+                  </Box>
+                )}
+                {!output.stdout && !output.stderr && !output.testResults && !output.compileErrors && (
+                  <ResultNotice tone="success" title="Run completed" detail="The program finished without producing output." />
+                )}
+              </VStack>
             )}
           </Box>
-        </Box>
-      )}
+        )}
+
+        {activeTab === "problems" && (
+          <Box p={4}>
+            {errors.length === 0 ? (
+              <Flex direction="column" alignItems="center" justifyContent="center" minH="120px" textAlign="center">
+                <CheckCircle2 size={25} color="#22c55e" opacity={0.35} />
+                <Text mt={2} fontSize="sm" fontWeight="700" color="text.secondary">No compiler problems</Text>
+                <Text mt={1} fontSize="xs" color="text.muted">Diagnostics will appear here as you work.</Text>
+              </Flex>
+            ) : (
+              <VStack gap={2} align="stretch">
+                {errors.map((error, index) => (
+                  <Flex
+                    as="button"
+                    key={`${error.line}:${error.column}:${index}`}
+                    alignItems="center"
+                    gap={3}
+                    w="full"
+                    p={3}
+                    textAlign="left"
+                    borderRadius="md"
+                    _hover={{ bg: "bg.surface" }}
+                    onClick={() => {
+                      window.dispatchEvent(new CustomEvent("navigate-to-line", { detail: { line: error.line } }));
+                    }}
+                  >
+                    {error.severity === "error" ? <XCircle size={14} color="#ef4444" /> : <AlertTriangle size={14} color="#facc15" />}
+                    <Text fontSize="xs" fontFamily="mono" color="text.muted">{error.line}:{error.column}</Text>
+                    <Text fontSize="sm" color="text.primary" truncate>{error.message}</Text>
+                  </Flex>
+                ))}
+              </VStack>
+            )}
+          </Box>
+        )}
+
+        {activeTab === "stdin" && (
+          <Box p={5}>
+            <Text id="program-input-label" display="block" mb={1.5} fontSize="xs" fontWeight="700" color="text.secondary">
+              Console input
+            </Text>
+            <Text mb={3} fontSize="xs" color="text.muted">This value is piped to Console.ReadLine() when the program runs.</Text>
+            <Textarea
+              id="program-input"
+              aria-labelledby="program-input-label"
+              value={stdin}
+              onChange={(event) => onStdinChange(event.target.value)}
+              placeholder="Enter stdin"
+              minH="120px"
+              fontFamily="mono"
+              fontSize="sm"
+              resize="vertical"
+              spellCheck={false}
+            />
+          </Box>
+        )}
+      </Box>
+    </Box>
+  );
+}
+
+function ResultNotice({ tone, title, detail }: { tone: "success" | "warning" | "error"; title: string; detail: string }) {
+  const colors = {
+    success: { accent: "accent.green", background: "#0d2418", border: "#166534" },
+    warning: { accent: "accent.yellow", background: "#2a2410", border: "#854d0e" },
+    error: { accent: "accent.red", background: "#2a1215", border: "#7f1d1d" },
+  }[tone];
+
+  return (
+    <Box p={3} borderRadius="md" bg={colors.background} border="1px solid" borderColor={colors.border}>
+      <Text fontSize="sm" fontWeight="700" color={colors.accent}>{title}</Text>
+      <Text mt={1} fontSize="xs" whiteSpace="pre-wrap" color="text.secondary">{detail}</Text>
     </Box>
   );
 }
